@@ -11,6 +11,9 @@ from streamlit_folium import st_folium
 import rasterio
 from rasterio.plot import reshape_as_image
 import os
+from pathlib import Path
+
+BASE_DIR = Path(__file__).parent
 
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -71,8 +74,7 @@ st.markdown("""
 # ── Data loading ───────────────────────────────────────────────────────────────
 @st.cache_data
 def load_csv():
-    df = pd.read_csv("SG_Zonal_statistics_w_Greenspaces.csv")
-
+    df = pd.read_csv(BASE_DIR / "SG_Zonal_statistics_w_Greenspaces.csv")
     # Normalise region name
     df["region"] = df["region"].str.strip().str.upper()
 
@@ -110,9 +112,9 @@ def load_csv():
 def load_shapefile():
     """Try to load the planning area shapefile from common locations."""
     for path in [
-        "MasterPlan2019PlanningAreaBoundaryNoSea.shp",
-        "MP19_PLNG_AREA_NO_SEA_PL.shp",
-        "planning_areas.shp",
+        BASE_DIR / "MasterPlan2019PlanningAreaBoundaryNoSea.shp",
+        BASE_DIR / "MP19_PLNG_AREA_NO_SEA_PL.shp",
+        BASE_DIR / "planning_areas.shp",
     ]:
         if os.path.exists(path):
             gdf = gpd.read_file(path)
@@ -126,10 +128,10 @@ def load_shapefile():
 def load_raster_preview():
     """Convert the classified GeoTIFF to an RGBA PNG array for folium overlay."""
     for path in [
-        "classified_nonodata.tif",
-        "classified_3414.tif",
-        "classified.tif",
-        "land_cover.tif",
+    BASE_DIR / "classified_nonodata.tif",
+    BASE_DIR / "classified_3414.tif",
+    BASE_DIR / "classified.tif",
+    BASE_DIR / "land_cover.tif",
     ]:
         if os.path.exists(path):
             with rasterio.open(path) as src:
