@@ -621,178 +621,234 @@ elif page == "👥 Demographics":
 
     view = st.radio("View", ["By planning area", "By region"], horizontal=True)
 
+    # ── Shared band definition ────────────────────────────────────────────────
+    _BANDS10 = [
+        ("0–9",   ["0_4",  "5_9"]),
+        ("10–19", ["10_14","15_19"]),
+        ("20–29", ["20_24","25_29"]),
+        ("30–39", ["30_34","35_39"]),
+        ("40–49", ["40_44","45_49"]),
+        ("50–59", ["50_54","55_59"]),
+        ("60–69", ["60_64","65_69"]),
+        ("70–79", ["70_74","75_79"]),
+        ("80+",   ["80_84","85_89","90andOver"]),
+    ]
+    _BAND_LBLS = [lbl for lbl, _ in _BANDS10]
+
+    def _pyr_vals(row_or_series, sex, as_pct=False):
+        total = max(float(row_or_series.get("pop2020_total") or 1), 1) if as_pct else 1
+        prefix = "m" if sex == "male" else "f"
+        return [
+            sum(float(row_or_series.get(f"pop2020_{prefix}_{b}") or 0) for b in bnds) / total * (100 if as_pct else 1)
+            for _, bnds in _BANDS10
+        ]
+
+    def _pyramid_fig(m_vals, f_vals, title="", height=400):
+        max_v = max(max(m_vals), max(f_vals), 1)
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            name="Male", y=_BAND_LBLS, x=[-v for v in m_vals],
+            orientation="h", marker_color="#534AB7", opacity=0.85,
+            hovertemplate="%{customdata:,}<extra>Male</extra>",
+            customdata=[round(v) for v in m_vals],
+        ))
+        fig.add_trace(go.Bar(
+            name="Female", y=_BAND_LBLS, x=f_vals,
+            orientation="h", marker_color="#D4537E", opacity=0.85,
+            hovertemplate="%{x:,}<extra>Female</extra>",
+        ))
+        fig.update_layout(
+            title=dict(text=title, font=dict(size=13)) if title else {},
+            barmode="overlay", height=height,
+            margin=dict(t=30 if title else 10, b=10, l=0, r=0),
+            xaxis=dict(
+                tickvals=[-max_v, -max_v//2, 0, max_v//2, max_v],
+                ticktext=[f"{max_v:,.0f}", f"{max_v//2:,.0f}", "0",
+                          f"{max_v//2:,.0f}", f"{max_v:,.0f}"],
+                title="Population",
+            ),
+            legend=dict(orientation="h", y=1.05),
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        )
+        return fig
+
+    def _scorecard(label, value, colour="var(--color-text-primary,#222)"):
+        return (
+            f"<div style='background:var(--color-background-secondary,#f5f5f5);"
+            f"border-radius:8px;padding:10px 12px;margin-bottom:4px'>"
+            f"<div style='font-size:13px;font-weight:500;"
+            f"color:var(--color-text-secondary,#555);margin-bottom:6px'>{label}</div>"
+            f"<div style='font-size:18px;font-weight:700;color:{colour}'>{value}</div>"
+            f"</div>"
+        )
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # BY PLANNING AREA
+    # ══════════════════════════════════════════════════════════════════════════
     if view == "By planning area":
         pa_list = sorted(dff.dropna(subset=["pop2020_total"])["name"].unique())
         sel_pa  = st.selectbox("Select planning area", pa_list)
         row     = dff[dff["name"] == sel_pa].iloc[0]
 
-        c1, c2, c3, c4 = st.columns(4)
-        pop = int(row["pop2020_total"]) if pd.notna(row["pop2020_total"]) else None
-        with c1: st.metric("Population",      f"{pop:,}" if pop else "n/a")
-        with c2: st.metric("0–19",   f"{(safe_m(row,'pct_age10_0_9') + safe_m(row,'pct_age10_10_19')):.1f}%")
-        with c3: st.metric("20–59",  f"{sum(safe_m(row,f'pct_age10_{b}') for b in ['20_29','30_39','40_49','50_59']):.1f}%")
-        with c4: st.metric("60+",    f"{sum(safe_m(row,f'pct_age10_{b}') for b in ['60_69','70_79','80plus']):.1f}%")
-
+        # ── Scorecards ───────────────────────────────────────────────────────
         st.divider()
+        pop   = int(row["pop2020_total"]) if pd.notna(row["pop2020_total"]) else None
+        p0_19 = safe_m(row,"pct_age10_0_9") + safe_m(row,"pct_age10_10_19")
+        p20_59= sum(safe_m(row,f"pct_age10_{b}") for b in ["20_29","30_39","40_49","50_59"])
+        p60p  = sum(safe_m(row,f"pct_age10_{b}") for b in ["60_69","70_79","80plus"])
+
+        sc_metrics = [
+            ("Population",    f"{pop:,}" if pop else "n/a",  "#534AB7"),
+            ("% Urban",       f"{safe_m(row,'pct_urban'):.1f}%",       "#888780"),
+            ("% Green",       f"{safe_m(row,'pct_green_total'):.1f}%", "#639922"),
+            ("% Parkland",    f"{safe_m(row,'pct_parkland'):.1f}%",    "#1D9E75"),
+            ("% Water",       f"{safe_m(row,'pct_water'):.1f}%",       "#378ADD"),
+            ("Aged 60+",      f"{p60p:.1f}%",                          "#BA7517"),
+        ]
+        cols = st.columns(6)
+        for col, (lbl, val, clr) in zip(cols, sc_metrics):
+            with col:
+                st.markdown(_scorecard(lbl, val, clr), unsafe_allow_html=True)
+
+        # ── Age & sex profile ─────────────────────────────────────────────
+        st.divider()
+        st.subheader("Age & sex profile")
+        st.caption("Males left · Females right")
+        m_vals = _pyr_vals(row, "male")
+        f_vals = _pyr_vals(row, "female")
+        st.plotly_chart(_pyramid_fig(m_vals, f_vals, height=400),
+                        use_container_width=True)
+
+        # ── Land cover ────────────────────────────────────────────────────
+        st.divider()
+        st.subheader("Land cover")
         cl, cr = st.columns(2)
         with cl:
-            st.subheader("Age profile")
-            _bands10 = [
-                ("0–9",   ["0_4",  "5_9"]),
-                ("10–19", ["10_14","15_19"]),
-                ("20–29", ["20_24","25_29"]),
-                ("30–39", ["30_34","35_39"]),
-                ("40–49", ["40_44","45_49"]),
-                ("50–59", ["50_54","55_59"]),
-                ("60–69", ["60_64","65_69"]),
-                ("70–79", ["70_74","75_79"]),
-                ("80+",   ["80_84","85_89","90andOver"]),
-            ]
-            _age_lbls = [lbl for lbl, _ in _bands10]
-            _m_vals = [sum(float(row.get(f"pop2020_m_{b}") or 0) for b in bnds) for _, bnds in _bands10]
-            _f_vals = [sum(float(row.get(f"pop2020_f_{b}") or 0) for b in bnds) for _, bnds in _bands10]
-            _max_v  = max(max(_m_vals), max(_f_vals), 1)
-            fig_age = go.Figure()
-            fig_age.add_trace(go.Bar(
-                name="Male", y=_age_lbls, x=[-v for v in _m_vals],
-                orientation="h", marker_color="#534AB7", opacity=0.85,
-                hovertemplate="%{customdata:,}<extra>Male</extra>",
-                customdata=_m_vals,
-            ))
-            fig_age.add_trace(go.Bar(
-                name="Female", y=_age_lbls, x=_f_vals,
-                orientation="h", marker_color="#D4537E", opacity=0.85,
-                hovertemplate="%{x:,}<extra>Female</extra>",
-            ))
-            fig_age.update_layout(
-                barmode="overlay", height=380,
-                margin=dict(t=10, b=10, l=0, r=0),
-                xaxis=dict(
-                    tickvals=[-_max_v, -_max_v//2, 0, _max_v//2, _max_v],
-                    ticktext=[f"{_max_v:,.0f}", f"{_max_v//2:,.0f}", "0",
-                              f"{_max_v//2:,.0f}", f"{_max_v:,.0f}"],
-                    title="Population",
-                ),
-                legend=dict(orientation="h", y=1.05),
-                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-            )
-            st.plotly_chart(fig_age, use_container_width=True)
-
-        with cr:
-            st.subheader("Land cover profile")
             fig_lc = go.Figure(go.Bar(
                 x=list(LC_LABELS.values()),
                 y=[row[k] for k in LC_LABELS],
                 marker_color=list(LC_COLORS.values()),
+                hovertemplate="%{x}: %{y:.1f}%<extra></extra>",
             ))
             fig_lc.update_layout(
-                height=280, margin=dict(t=10, b=10),
+                height=300, margin=dict(t=10, b=10),
                 yaxis_title="% cover", showlegend=False,
                 plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
             )
             st.plotly_chart(fig_lc, use_container_width=True)
 
-        st.subheader(f"vs {row['region'].title()} region average")
-        reg_avg      = dff[dff["region"] == row["region"]].mean(numeric_only=True)
-        compare_rows = [
-            {"Class": label,
-             sel_pa: round(row[key], 1),
-             "Region avg": round(reg_avg[key], 1),
-             "Difference": round(row[key] - reg_avg[key], 1)}
-            for key, label in LC_LABELS.items()
-        ]
-        st.dataframe(pd.DataFrame(compare_rows), hide_index=True, use_container_width=True)
+        with cr:
+            # Land cover vs region average — diverging bar
+            reg_avg = dff[dff["region"] == row["region"]].mean(numeric_only=True)
+            lc_diffs = [round(row[k] - reg_avg[k], 1) for k in LC_LABELS]
+            lc_colors_div = ["#639922" if d >= 0 else "#888780" for d in lc_diffs]
+            abs_max_lc = max(abs(d) for d in lc_diffs) * 1.3 or 1
+            fig_lc_div = go.Figure(go.Bar(
+                y=list(LC_LABELS.values()), x=lc_diffs,
+                orientation="h", marker_color=lc_colors_div,
+                hovertemplate="%{y}: %{x:+.1f}pp vs region avg<extra></extra>",
+            ))
+            fig_lc_div.add_vline(x=0, line_width=1,
+                                  line_color="rgba(128,128,128,0.4)")
+            fig_lc_div.update_layout(
+                height=300, margin=dict(t=30, b=10, l=0, r=10),
+                xaxis=dict(title="pp vs region avg", range=[-abs_max_lc, abs_max_lc],
+                           ticksuffix="pp"),
+                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+                showlegend=False,
+            )
+            fig_lc_div.add_annotation(
+                x=-abs_max_lc, y=1.1, xref="x", yref="paper",
+                text="← Below avg", showarrow=False,
+                font=dict(size=10, color="#888"), xanchor="left",
+            )
+            fig_lc_div.add_annotation(
+                x=abs_max_lc, y=1.1, xref="x", yref="paper",
+                text="Above avg →", showarrow=False,
+                font=dict(size=10, color="#639922"), xanchor="right",
+            )
+            st.plotly_chart(fig_lc_div, use_container_width=True)
 
+    # ══════════════════════════════════════════════════════════════════════════
+    # BY REGION
+    # ══════════════════════════════════════════════════════════════════════════
     else:
         sel_region = st.selectbox("Select region", sorted(dff["region"].dropna().unique()))
         reg_df     = (dff[(dff["region"] == sel_region) & (dff["pop2020_total"] > 100)]
                       .dropna(subset=["pop2020_total"])
                       .sort_values("pct_urban", ascending=False))
 
-        total_pop = int(reg_df["pop2020_total"].sum())
-        c1, c2, c3, c4 = st.columns(4)
-        with c1: st.metric("Region population", f"{total_pop:,}")
-        with c2: st.metric("Avg % urban",        f"{reg_df['pct_urban'].mean():.1f}%")
-        with c3: st.metric("Avg % green",         f"{reg_df['pct_green_total'].mean():.1f}%")
-        with c4: st.metric("Avg aged 60+",        f"{(reg_df['pct_age10_60_69'].fillna(0) + reg_df['pct_age10_70_79'].fillna(0) + reg_df['pct_age10_80plus'].fillna(0)).mean():.1f}%")
-
+        # ── Scorecards ───────────────────────────────────────────────────────
         st.divider()
-        cl, cr = st.columns(2)
-        with cl:
-            st.subheader("Land cover by planning area")
-            fig = go.Figure()
-            for key, label in LC_LABELS.items():
-                fig.add_trace(go.Bar(
-                    y=reg_df["name"], x=reg_df[key],
-                    orientation="h", name=label, marker_color=LC_COLORS[key],
-                ))
-            fig.update_layout(
-                barmode="stack", height=max(300, len(reg_df) * 28),
-                margin=dict(l=10, r=10, t=10, b=30),
-                xaxis=dict(range=[0, 100], title="% cover"),
-                legend=dict(orientation="h", y=1.08),
-                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-            )
-            st.plotly_chart(fig, use_container_width=True)
+        total_pop  = int(reg_df["pop2020_total"].sum())
+        avg_urban  = reg_df["pct_urban"].mean()
+        avg_green  = reg_df["pct_green_total"].mean()
+        avg_60plus = (reg_df["pct_age10_60_69"].fillna(0) +
+                      reg_df["pct_age10_70_79"].fillna(0) +
+                      reg_df["pct_age10_80plus"].fillna(0)).mean()
 
-        with cr:
-            st.subheader("Age structure (region)")
-            _bands10r = [
-                ("0–9",   ["0_4",  "5_9"]),
-                ("10–19", ["10_14","15_19"]),
-                ("20–29", ["20_24","25_29"]),
-                ("30–39", ["30_34","35_39"]),
-                ("40–49", ["40_44","45_49"]),
-                ("50–59", ["50_54","55_59"]),
-                ("60–69", ["60_64","65_69"]),
-                ("70–79", ["70_74","75_79"]),
-                ("80+",   ["80_84","85_89","90andOver"]),
-            ]
-            _lbl = [lbl for lbl, _ in _bands10r]
-            def _col_sum(col): return reg_df[col].apply(lambda x: float(x) if x not in ('','-',None) else 0).sum()
-            _rm  = [sum(_col_sum(f"pop2020_m_{b}") for b in bnds) for _, bnds in _bands10r]
-            _rf  = [sum(_col_sum(f"pop2020_f_{b}") for b in bnds) for _, bnds in _bands10r]
-            _rmx = max(max(_rm), max(_rf), 1)
-            fig_p = go.Figure()
-            fig_p.add_trace(go.Bar(
-                name="Male", y=_lbl, x=[-v for v in _rm],
-                orientation="h", marker_color="#534AB7", opacity=0.85,
-                hovertemplate="%{customdata:,}<extra>Male</extra>",
-                customdata=[int(v) for v in _rm],
-            ))
-            fig_p.add_trace(go.Bar(
-                name="Female", y=_lbl, x=_rf,
-                orientation="h", marker_color="#D4537E", opacity=0.85,
-                hovertemplate="%{x:,}<extra>Female</extra>",
-            ))
-            fig_p.update_layout(
-                barmode="overlay", height=380,
-                margin=dict(t=10, b=10, l=0, r=0),
-                xaxis=dict(
-                    tickvals=[-_rmx, -_rmx//2, 0, _rmx//2, _rmx],
-                    ticktext=[f"{_rmx:,.0f}", f"{_rmx//2:,.0f}", "0",
-                              f"{_rmx//2:,.0f}", f"{_rmx:,.0f}"],
-                    title="Population",
-                ),
-                legend=dict(orientation="h", y=1.05),
-                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-            )
-            st.plotly_chart(fig_p, use_container_width=True)
+        reg_sc = [
+            ("Population",  f"{total_pop:,}",        "#534AB7"),
+            ("Avg % urban", f"{avg_urban:.1f}%",      "#888780"),
+            ("Avg % green", f"{avg_green:.1f}%",      "#639922"),
+            ("Avg aged 60+",f"{avg_60plus:.1f}%",     "#BA7517"),
+        ]
+        cols = st.columns(4)
+        for col, (lbl, val, clr) in zip(cols, reg_sc):
+            with col:
+                st.markdown(_scorecard(lbl, val, clr), unsafe_allow_html=True)
 
-            st.subheader("Ageing vs green space")
-            fig_ag = px.scatter(
-                reg_df.assign(pct_age_60plus=reg_df["pct_age10_60_69"].fillna(0) + reg_df["pct_age10_70_79"].fillna(0) + reg_df["pct_age10_80plus"].fillna(0)).dropna(subset=["pct_green_total"]),
-                x="pct_green_total", y="pct_age_60plus",
-                size="pop2020_total", text="name",
-                color_discrete_sequence=[REGION_COLORS.get(sel_region, "#888")],
-                labels={"pct_green_total": "% Green", "pct_age_60plus": "% Aged 60+"},
-            )
-            fig_ag.update_traces(textposition="top center", textfont_size=10)
-            fig_ag.update_layout(
-                height=300, margin=dict(t=10, b=30), showlegend=False,
-                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-            )
-            st.plotly_chart(fig_ag, use_container_width=True)
+        # ── Land cover ────────────────────────────────────────────────────
+        st.divider()
+        st.subheader("Land cover by planning area")
+        fig = go.Figure()
+        for key, label in LC_LABELS.items():
+            fig.add_trace(go.Bar(
+                y=reg_df["name"], x=reg_df[key],
+                orientation="h", name=label, marker_color=LC_COLORS[key],
+            ))
+        fig.update_layout(
+            barmode="stack", height=max(300, len(reg_df) * 28),
+            margin=dict(l=10, r=10, t=10, b=30),
+            xaxis=dict(range=[0, 100], title="% cover"),
+            legend=dict(orientation="h", y=1.08),
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+        # ── Age & sex profile ─────────────────────────────────────────────
+        st.divider()
+        st.subheader("Age & sex profile")
+        st.caption("Region total · Males left · Females right")
+
+        def _col_sum(col):
+            return reg_df[col].apply(
+                lambda x: float(x) if x not in ("","-",None) else 0).sum()
+
+        rm = [sum(_col_sum(f"pop2020_m_{b}") for b in bnds) for _, bnds in _BANDS10]
+        rf = [sum(_col_sum(f"pop2020_f_{b}") for b in bnds) for _, bnds in _BANDS10]
+        st.plotly_chart(_pyramid_fig(rm, rf, height=400), use_container_width=True)
+
+        # ── Ageing vs green scatter ───────────────────────────────────────
+        st.divider()
+        st.subheader("Ageing vs green space")
+        fig_ag = px.scatter(
+            reg_df.assign(
+                pct_age_60plus=(reg_df["pct_age10_60_69"].fillna(0) +
+                                reg_df["pct_age10_70_79"].fillna(0) +
+                                reg_df["pct_age10_80plus"].fillna(0))
+            ).dropna(subset=["pct_green_total"]),
+            x="pct_green_total", y="pct_age_60plus",
+            size="pop2020_total", text="name",
+            color_discrete_sequence=[REGION_COLORS.get(sel_region, "#888")],
+            labels={"pct_green_total": "% Green", "pct_age_60plus": "% Aged 60+"},
+        )
+        fig_ag.update_traces(textposition="top center", textfont_size=10)
+        fig_ag.update_layout(
+            height=360, margin=dict(t=10, b=30), showlegend=False,
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(fig_ag, use_container_width=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
