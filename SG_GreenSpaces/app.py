@@ -870,7 +870,7 @@ elif page == "💰 Income":
             ticktext=[f"{-max_dev:.0f}", f"{-max_dev/2:.0f}", "0",
                       f"{max_dev/2:.0f}", f"{max_dev:.0f}"],
         ),
-        hovertemplate="<b>%{y}</b><br>%{x}<br>Deviation: %{z:+.1f}pp vs SG avg<extra></extra>",
+        hovertemplate="<b>%{y}</b><br>%{x}<br>Deviation: %{z:+.2f}pp vs SG avg<extra></extra>",
     ), row=1, col=1)
 
     # Separator line above avg row
