@@ -363,14 +363,16 @@ if page == "🗺️ Map":
                 font-family: sans-serif !important;
                 font-size: 12px !important;
                 min-width: 160px !important;
-                max-width: 220px !important;
+                max-width: 260px !important;
                 line-height: 1.5 !important;
+                word-wrap: break-word !important;
               }
               .leaflet-tooltip::before { display:none !important; }
               .leaflet-tooltip table {
                 border: none !important;
                 border-collapse: collapse !important;
                 width: 100% !important;
+                table-layout: auto !important;
               }
               .leaflet-tooltip th {
                 color: #bbb !important;
@@ -380,6 +382,7 @@ if page == "🗺️ Map":
                 border: none !important;
                 white-space: nowrap !important;
                 text-align: left !important;
+                vertical-align: top !important;
               }
               .leaflet-tooltip td {
                 color: #ffffff !important;
@@ -388,7 +391,9 @@ if page == "🗺️ Map":
                 padding: 2px 0 !important;
                 border: none !important;
                 text-align: right !important;
-                white-space: nowrap !important;
+                white-space: normal !important;
+                word-break: break-word !important;
+                max-width: 160px !important;
               }
               .leaflet-tooltip tr { border: none !important; }
             </style>
