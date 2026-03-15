@@ -386,37 +386,61 @@ if page == "🗺️ Map":
               row('LGS', fmtLgs(props.lgs));
           }
 
-          // Watch tooltip mutations — parse values and update panel
-          var obs2 = new MutationObserver(function(muts) {
-            muts.forEach(function(mu) {
-              var tt = document.querySelector('.leaflet-tooltip');
-              if (!tt) return;
-              var rows = tt.querySelectorAll('tr');
-              var props = {};
-              rows.forEach(function(r) {
-                var cells = r.querySelectorAll('th, td');
-                if (cells.length < 2) return;
-                var k = cells[0].textContent.trim();
-                var v = cells[1].textContent.trim();
-                if (k === 'Area')       props.name           = v;
-                if (k === 'Region')     props.region         = v;
-                if (k === 'Population') props.pop2020_total  = v.replace(/,/g,'');
-                if (k === '% Urban')    props.pct_urban      = v;
-                if (k === '% Green')    props.pct_green_total= v;
-                if (k === '% Parkland') props.pct_parkland   = v;
-                if (k === '% Water')    props.pct_water      = v;
+          // ── Primary: hook into Leaflet's own layer event system ──────────
+          // Leaflet stores the map instance on the container element.
+          // We poll until the map is ready, then attach click+mouseover
+          // handlers to every GeoJSON layer so we get full feature.properties.
+          function attachLeafletHandlers() {
+            var containers = document.querySelectorAll('.leaflet-container');
+            for (var ci = 0; ci < containers.length; ci++) {
+              var mapObj = containers[ci]._leaflet_map;
+              if (!mapObj) continue;
+              mapObj.eachLayer(function(layer) {
+                if (layer.eachLayer) {             // GeoJSON group
+                  layer.eachLayer(function(sub) {
+                    if (sub.feature && sub.feature.properties) {
+                      sub.on('click mouseover', function(e) {
+                        updatePanel(e.target.feature.properties);
+                      });
+                    }
+                  });
+                }
               });
-              if (props.name) updatePanel(props);
-            });
-          });
+              return true;   // success
+            }
+            return false;
+          }
 
-          document.addEventListener('DOMContentLoaded', function() {
-            obs2.observe(document.body, {
-              childList: true, subtree: true,
-              characterData: true
+          // Poll until Leaflet is ready (map renders asynchronously)
+          var _attempts = 0;
+          function tryAttach() {
+            if (attachLeafletHandlers()) return;
+            if (_attempts++ < 20) setTimeout(tryAttach, 300);
+          }
+          tryAttach();
+
+          // ── Fallback: tooltip mutation observer ────────────────────────
+          // Catches hover when click handler hasn't attached yet
+          var obs2 = new MutationObserver(function(muts) {
+            var tt = document.querySelector('.leaflet-tooltip');
+            if (!tt) return;
+            var rows = tt.querySelectorAll('tr');
+            var props = {};
+            rows.forEach(function(r) {
+              var cells = r.querySelectorAll('th, td');
+              if (cells.length < 2) return;
+              var k = cells[0].textContent.trim();
+              var v = cells[1].textContent.trim();
+              if (k === 'Area')       props.name            = v;
+              if (k === 'Region')     props.region          = v;
+              if (k === 'Population') props.pop2020_total   = v.replace(/,/g,'');
+              if (k === '% Urban')    props.pct_urban       = v;
+              if (k === '% Green')    props.pct_green_total = v;
+              if (k === '% Parkland') props.pct_parkland    = v;
+              if (k === '% Water')    props.pct_water       = v;
             });
+            if (props.name) updatePanel(props);
           });
-          // Also start observer immediately in case DOM already loaded
           obs2.observe(document.body, {
             childList: true, subtree: true, characterData: true
           });
