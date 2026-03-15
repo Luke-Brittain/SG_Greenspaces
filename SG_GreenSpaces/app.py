@@ -1306,32 +1306,3 @@ elif page == "⚖️ Compare":
                 st.plotly_chart(fig_div, use_container_width=True)
             else:
                 st.caption("Diverging chart requires both areas to have income data.")
-
-    # ── Row 4: Population size visual ──────────────────────────────────────────
-    st.divider()
-    st.subheader("Population size")
-
-    pop_a = safe(ra["pop2020_total"])
-    pop_b = safe(rb["pop2020_total"])
-    max_pop = max(pop_a, pop_b, 1)
-
-    fig_pop = go.Figure()
-    fig_pop.add_trace(go.Bar(
-        x=[pop_a], y=[pa_a], orientation="h",
-        marker_color="#639922", name=pa_a,
-        text=[f"{int(pop_a):,}" if pop_a > 0 else "n/a"],
-        textposition="outside",
-    ))
-    fig_pop.add_trace(go.Bar(
-        x=[pop_b], y=[pa_b], orientation="h",
-        marker_color="#378ADD", name=pa_b,
-        text=[f"{int(pop_b):,}" if pop_b > 0 else "n/a"],
-        textposition="outside",
-    ))
-    fig_pop.update_layout(
-        height=160, margin=dict(t=10, b=10, l=10, r=60),
-        xaxis=dict(title="Residents (2020 Census)", range=[0, max_pop * 1.2]),
-        showlegend=False,
-        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-    )
-    st.plotly_chart(fig_pop, use_container_width=True)
