@@ -813,24 +813,77 @@ elif page == "💰 Income":
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "⚖️ Compare":
     st.title("Planning area comparison")
-    st.caption("Select two planning areas to compare across land cover, demographics and income.")
-
-    all_pa = sorted(df["name"].dropna().unique())
-
-    col_a, col_b = st.columns(2)
-    with col_a:
-        pa_a = st.selectbox("Planning area A", all_pa, index=all_pa.index("Bedok") if "Bedok" in all_pa else 0, key="cmp_a")
-    with col_b:
-        pa_b = st.selectbox("Planning area B", all_pa, index=all_pa.index("Tampines") if "Tampines" in all_pa else 1, key="cmp_b")
-
-    ra = df[df["name"] == pa_a].iloc[0]
-    rb = df[df["name"] == pa_b].iloc[0]
+    st.caption("Select two areas to compare — choose any planning area, a region average, or Singapore overall.")
 
     def safe(v, fmt=".1f"):
         try:
             return float(v)
         except (TypeError, ValueError):
             return 0.0
+
+    # ── Build synthetic aggregate rows for regions / Singapore overall ─────────
+    AGE_BANDS_10 = ["0_4","5_9","10_14","15_19","20_24","25_29","30_34","35_39",
+                    "40_44","45_49","50_54","55_59","60_64","65_69","70_74",
+                    "75_79","80_84","85_89","90andOver"]
+
+    def make_aggregate_row(subset, label, region_val):
+        """Return a Series representing the population-weighted average of subset."""
+        num_cols = [c for c in subset.columns if subset[c].dtype in [float, "float64"]]
+        pop = subset["pop2020_total"].fillna(0)
+        total_pop = pop.sum()
+        agg = {}
+        # Population-weighted mean for pct columns, straight sum for pop
+        for c in num_cols:
+            if c == "pop2020_total":
+                agg[c] = total_pop
+            elif c.startswith("pct_") or c.startswith("pop2020_m_") or                  c.startswith("pop2020_f_") or c.startswith("pop2020_t_"):
+                w = pop * subset[c].fillna(0)
+                agg[c] = w.sum() / total_pop if total_pop > 0 else 0.0
+            else:
+                agg[c] = subset[c].fillna(0).mean()
+        agg["name"]   = label
+        agg["region"] = region_val
+        # Recompute GUB and LGS from aggregated pcts
+        g = agg.get("pct_green_total", 0)
+        u = agg.get("pct_urban", 0)
+        w = agg.get("pct_water", 0)
+        agg["gub"] = round((g - u) / (g + u), 3) if (g + u) > 0 else 0.0
+        nw = 100 - w
+        agg["lgs"] = round((agg.get("pct_parkland", 0) + agg.get("pct_green_res", 0))
+                           / nw * 100, 1) if nw > 0 else 0.0
+        return pd.Series(agg)
+
+    AGGREGATE_OPTIONS = {
+        "🌐 Singapore overall": make_aggregate_row(df, "Singapore overall", "ALL"),
+        "🔵 Central region":    make_aggregate_row(df[df["region"]=="CENTRAL"], "Central region", "CENTRAL"),
+        "🟢 East region":       make_aggregate_row(df[df["region"]=="EAST"],    "East region",    "EAST"),
+        "🟡 North region":      make_aggregate_row(df[df["region"]=="NORTH"],   "North region",   "NORTH"),
+        "🟠 North-East region": make_aggregate_row(df[df["region"]=="NORTH-EAST"],"North-East region","NORTH-EAST"),
+        "🔴 West region":       make_aggregate_row(df[df["region"]=="WEST"],    "West region",    "WEST"),
+    }
+
+    all_pa      = sorted(df["name"].dropna().unique())
+    all_options = list(AGGREGATE_OPTIONS.keys()) + all_pa
+
+    def get_row(selection):
+        if selection in AGGREGATE_OPTIONS:
+            return AGGREGATE_OPTIONS[selection]
+        return df[df["name"] == selection].iloc[0]
+
+    col_a, col_b = st.columns(2)
+    with col_a:
+        sel_a = st.selectbox("Area A", all_options,
+                             index=all_options.index("Bedok") if "Bedok" in all_options else 0,
+                             key="cmp_a")
+    with col_b:
+        sel_b = st.selectbox("Area B", all_options,
+                             index=all_options.index("Tampines") if "Tampines" in all_options else 1,
+                             key="cmp_b")
+
+    ra   = get_row(sel_a)
+    rb   = get_row(sel_b)
+    pa_a = ra["name"]
+    pa_b = rb["name"]
 
     # ── Headline metrics ───────────────────────────────────────────────────────
     st.divider()
@@ -1139,8 +1192,11 @@ elif page == "⚖️ Compare":
     inc_labels = [l for _, l, _ in INC_BANDS]
     inc_colors = [c for _, _, c in INC_BANDS]
 
-    has_inc_a = pd.notna(ra["income_total_workers_thousands"])
-    has_inc_b = pd.notna(rb["income_total_workers_thousands"])
+    # Aggregate rows have income averaged across PAs — treat as valid if non-zero
+    _inc_a = ra.get("income_total_workers_thousands", None) if hasattr(ra, "get") else ra["income_total_workers_thousands"]
+    _inc_b = rb.get("income_total_workers_thousands", None) if hasattr(rb, "get") else rb["income_total_workers_thousands"]
+    has_inc_a = pd.notna(_inc_a) and safe(_inc_a) > 0
+    has_inc_b = pd.notna(_inc_b) and safe(_inc_b) > 0
 
     if not has_inc_a and not has_inc_b:
         st.info("Neither planning area has income data (GHS 2015 covers residential areas only).")
