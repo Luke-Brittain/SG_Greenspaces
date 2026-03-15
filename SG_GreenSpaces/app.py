@@ -248,8 +248,6 @@ if page == "🗺️ Map":
                 ),
             ).add_to(m)
 
-            # Strip Leaflet tooltip border/arrow; use transform to anchor
-            # tooltip above-left of cursor so it never spills below viewport
             m.get_root().html.add_child(folium.Element("""
             <style>
               .leaflet-tooltip {
@@ -263,8 +261,6 @@ if page == "🗺️ Map":
                 max-width: 240px !important;
                 line-height: 1.6 !important;
                 word-wrap: break-word !important;
-                /* Shift tooltip up and left so it sits above-left of cursor */
-                transform: translate(-110%, -110%) !important;
               }
               .leaflet-tooltip::before { display: none !important; }
               .leaflet-tooltip table  { border:none !important; border-collapse:collapse !important; width:100% !important; }
@@ -272,6 +268,50 @@ if page == "🗺️ Map":
               .leaflet-tooltip td     { color:#fff !important; font-weight:600 !important; font-size:12px !important; padding:2px 0 !important; border:none !important; text-align:right !important; white-space:normal !important; word-break:break-word !important; max-width:150px !important; }
               .leaflet-tooltip tr     { border:none !important; }
             </style>
+            <script>
+            (function() {
+              var pad = 16;
+              function clamp(tt) {
+                if (!tt || !tt.offsetWidth) return;
+                var r  = tt.getBoundingClientRect();
+                var vW = document.documentElement.clientWidth;
+                var vH = document.documentElement.clientHeight;
+                var dx = 0, dy = 0;
+                if (r.right  > vW - pad) dx = vW - pad - r.right;
+                if (r.bottom > vH - pad) dy = vH - pad - r.bottom;
+                if (r.left + dx < pad)   dx = pad - r.left;
+                if (r.top  + dy < pad)   dy = pad - r.top;
+                if (dx === 0 && dy === 0) return;
+                var cur = tt.style.transform || "";
+                var parts = cur.match(/translate3d[(](-?[0-9.]+)px,[^-0-9]*(-?[0-9.]+)px/);
+                if (parts) {
+                  var nx = parseFloat(parts[1]) + dx;
+                  var ny = parseFloat(parts[2]) + dy;
+                  tt.style.transform = "translate3d(" + nx + "px," + ny + "px,0px)";
+                }
+              }
+              var obs = new MutationObserver(function(muts) {
+                muts.forEach(function(mu) {
+                  mu.addedNodes.forEach(function(n) {
+                    if (n.classList && n.classList.contains("leaflet-tooltip")) {
+                      setTimeout(function(){ clamp(n); }, 0);
+                    }
+                  });
+                  if (mu.type === "attributes" &&
+                      mu.target.classList &&
+                      mu.target.classList.contains("leaflet-tooltip")) {
+                    setTimeout(function(){ clamp(mu.target); }, 0);
+                  }
+                });
+              });
+              document.addEventListener("DOMContentLoaded", function() {
+                obs.observe(document.body, {
+                  childList: true, subtree: true,
+                  attributes: true, attributeFilter: ["style"]
+                });
+              });
+            })();
+            </script>
             """))
         else:
             st.info("No shapefile found. Place your planning area .geojson in the app folder.")
