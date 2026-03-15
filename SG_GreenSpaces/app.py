@@ -235,45 +235,41 @@ if page == "🗺️ Map":
                     localize=True,
                     sticky=False,
                     style=(
-                        "background-color: rgba(0,0,0,0.75);"
+                        "background-color: rgba(20,20,20,0.85);"
                         "color: #ffffff;"
                         "font-family: sans-serif;"
                         "font-size: 12px;"
                         "padding: 8px 12px;"
                         "border-radius: 6px;"
-                        "border: none !important;"
-                        "box-shadow: none !important;"
-                        "outline: none !important;"
+                        "border: none;"
+                        "box-shadow: 0 2px 8px rgba(0,0,0,0.4);"
                     ),
                 ),
             ).add_to(m)
 
-            # Inject CSS to fully strip leaflet tooltip bounding box
+            # Override ALL leaflet tooltip chrome — box, arrow, table borders
             m.get_root().html.add_child(folium.Element("""
             <style>
+              /* Strip the outer wrapper box entirely */
               .leaflet-tooltip {
-                background: transparent !important;
+                background: none !important;
                 border: none !important;
+                border-radius: 0 !important;
                 box-shadow: none !important;
                 padding: 0 !important;
-                outline: none !important;
               }
-              .leaflet-tooltip::before,
-              .leaflet-tooltip-top::before,
-              .leaflet-tooltip-bottom::before,
-              .leaflet-tooltip-left::before,
-              .leaflet-tooltip-right::before {
-                display: none !important;
-                border: none !important;
+              /* Hide the directional arrow triangle */
+              .leaflet-tooltip::before { display: none !important; }
+              /* The inner content div carries our custom style — leave it alone */
+              .leaflet-tooltip > * {
+                border-collapse: collapse !important;
               }
-              .leaflet-tooltip > div,
-              .leaflet-tooltip table,
+              /* Strip every table element border that browsers add by default */
+              .leaflet-tooltip table  { border: none !important; border-collapse: collapse !important; }
               .leaflet-tooltip tr,
               .leaflet-tooltip th,
-              .leaflet-tooltip td {
-                border: none !important;
-                outline: none !important;
-              }
+              .leaflet-tooltip td     { border: none !important; padding: 2px 6px 2px 0 !important; }
+              .leaflet-tooltip th     { font-weight: 600 !important; padding-right: 12px !important; opacity: 0.75; }
             </style>
             """))
         else:
