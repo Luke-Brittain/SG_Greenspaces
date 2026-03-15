@@ -332,7 +332,7 @@ if page == "🗺️ Map":
                 tooltip=folium.GeoJsonTooltip(
                     fields=["name", "region", "pop2020_total",
                             "pct_urban", "pct_green_total", "pct_parkland", "pct_water"],
-                    aliases=["", "", "", "", "", "", ""],
+                    aliases=["Area", "Region", "Population", "% Urban", "% Green", "% Parkland", "% Water"],
                     localize=True,
                     sticky=False,
                     style=(
@@ -358,31 +358,39 @@ if page == "🗺️ Map":
                 border: none !important;
                 border-radius: 8px !important;
                 box-shadow: 0 4px 16px rgba(0,0,0,0.5) !important;
-                padding: 10px 14px !important;
+                padding: 8px 12px !important;
                 color: #fff !important;
                 font-family: sans-serif !important;
-                font-size: 13px !important;
-                min-width: 180px;
-                line-height: 1.7;
+                font-size: 12px !important;
+                min-width: 160px !important;
+                max-width: 220px !important;
+                line-height: 1.5 !important;
               }
               .leaflet-tooltip::before { display:none !important; }
-              .leaflet-tooltip table { border:none !important; border-collapse:collapse !important; width:100%; }
-              .leaflet-tooltip th {
-                color: #aaa !important;
-                font-weight: 400 !important;
-                padding: 1px 12px 1px 0 !important;
+              .leaflet-tooltip table {
                 border: none !important;
-                font-size: 12px !important;
-                white-space: nowrap;
+                border-collapse: collapse !important;
+                width: 100% !important;
+              }
+              .leaflet-tooltip th {
+                color: #bbb !important;
+                font-weight: 400 !important;
+                font-size: 11px !important;
+                padding: 2px 10px 2px 0 !important;
+                border: none !important;
+                white-space: nowrap !important;
+                text-align: left !important;
               }
               .leaflet-tooltip td {
-                color: #fff !important;
-                font-weight: 500 !important;
-                padding: 1px 0 !important;
+                color: #ffffff !important;
+                font-weight: 600 !important;
+                font-size: 12px !important;
+                padding: 2px 0 !important;
                 border: none !important;
-                text-align: right;
+                text-align: right !important;
+                white-space: nowrap !important;
               }
-              .leaflet-tooltip tr { border:none !important; }
+              .leaflet-tooltip tr { border: none !important; }
             </style>
             """))
         else:
