@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import numpy as np
 import plotly.express as px
@@ -15,11 +16,6 @@ from pathlib import Path
 from PIL import Image
 
 BASE_DIR = Path(__file__).parent
-
-# Temporary debug — remove after confirming
-import os
-_files = os.listdir(BASE_DIR)
-st.sidebar.caption("Files found: " + ", ".join(_files))
 
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -121,8 +117,8 @@ def load_shapefile():
 @st.cache_data
 def load_raster_preview():
     for path in [
-        BASE_DIR / "classified_nodata.tif",       # your actual file
         BASE_DIR / "classified_nonodata.tif",
+        BASE_DIR / "classified_nodata.tif",
         BASE_DIR / "classified.tif",
         BASE_DIR / "land_cover.tif",
     ]:
@@ -139,12 +135,14 @@ def load_raster_preview():
             return rgba, bounds
     return None, None
 
+
 @st.cache_data
 def load_satellite_preview():
     for path in [
-        BASE_DIR / "SG_coastal_complete_2025_small.tif",   # your actual file
+        BASE_DIR / "SG_coastal_complete_2025_small.tif",
         BASE_DIR / "SG_coastal_complete_2025.tif",
         BASE_DIR / "satellite_image.tif",
+        BASE_DIR / "SG_satellite.tif",
         BASE_DIR / "basemap.tif",
     ]:
         if os.path.exists(path):
@@ -202,159 +200,327 @@ if show_residential_only:
 # ══════════════════════════════════════════════════════════════════════════════
 if page == "🗺️ Map":
     st.title("Land cover map")
-    st.caption("Classified GeoTIFF overlaid with planning area boundaries. Click a polygon for stats.")
+
+    sat_rgba, sat_bounds = load_satellite_preview()
+    rgba, bounds         = load_raster_preview()
+
+    # ── Encode both images to base64 for inline HTML ──
+    import base64, io
+
+    def img_to_b64(arr: np.ndarray) -> str:
+        buf = io.BytesIO()
+        Image.fromarray(arr, mode="RGBA").save(buf, format="PNG")
+        return base64.b64encode(buf.getvalue()).decode()
+
+    has_sat  = sat_rgba is not None
+    has_lc   = rgba is not None
+
+    # ── Map mode selector ──
+    map_mode = st.radio(
+        "Map mode",
+        ["🛰 Satellite + classification swipe", "📍 Classification + boundaries"],
+        horizontal=True,
+    )
 
     col_map, col_info = st.columns([3, 1])
 
     with col_map:
-        sat_rgba, sat_bounds = load_satellite_preview()
 
-        # Base map — blank tiles if satellite loaded, CartoDB fallback
-        m = folium.Map(
-            location=[1.3521, 103.8198],
-            zoom_start=11,
-            tiles="CartoDB positron" if sat_rgba is None else None,
-        )
+        # ════════════════════════════════════════════════════════════════════
+        # MODE A — Swipe slider (satellite left, classified right)
+        # Uses a self-contained HTML component — no folium needed
+        # ════════════════════════════════════════════════════════════════════
+        if map_mode == "🛰 Satellite + classification swipe":
 
-        # ── Satellite basemap ──
-        if sat_rgba is not None:
+            if not has_sat or not has_lc:
+                missing = []
+                if not has_sat: missing.append("satellite image")
+                if not has_lc:  missing.append("classified raster")
+                st.warning(f"Missing: {' and '.join(missing)}. Both files are needed for swipe mode.")
+            else:
+                sat_b64 = img_to_b64(sat_rgba)
+                lc_b64  = img_to_b64(rgba)
+
+                swipe_html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  html, body {{ margin:0; padding:0; height:100%; }}
+  #map {{ width:100%; height:560px; }}
+  .swipe-handle {{
+    position:absolute; top:0; bottom:0; width:4px;
+    background:#fff; cursor:ew-resize; z-index:1000;
+    box-shadow:0 0 6px rgba(0,0,0,0.5);
+  }}
+  .swipe-arrow {{
+    position:absolute; top:50%; transform:translateY(-50%);
+    width:32px; height:32px; background:#fff; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    left:-14px; box-shadow:0 0 6px rgba(0,0,0,0.4);
+    font-size:16px; user-select:none; pointer-events:none;
+  }}
+  .label-left, .label-right {{
+    position:absolute; bottom:12px; z-index:1000;
+    background:rgba(0,0,0,0.55); color:#fff;
+    font-size:12px; padding:4px 10px; border-radius:4px;
+    font-family:sans-serif; pointer-events:none;
+  }}
+  .label-left  {{ left:12px; }}
+  .label-right {{ right:12px; }}
+  .lc-legend {{
+    position:absolute; bottom:12px; left:50%; transform:translateX(-50%);
+    z-index:1000; background:rgba(255,255,255,0.92);
+    padding:6px 12px; border-radius:6px; font-size:11px;
+    font-family:sans-serif; display:flex; gap:10px;
+    box-shadow:0 1px 4px rgba(0,0,0,0.2);
+  }}
+  .leg-item {{ display:flex; align-items:center; gap:4px; }}
+  .leg-swatch {{ width:12px; height:12px; border-radius:2px; flex-shrink:0; }}
+</style>
+</head>
+<body>
+<div id="map">
+  <div class="label-left">🛰 Satellite</div>
+  <div class="label-right">🗂 Classified</div>
+  <div class="lc-legend">
+    <div class="leg-item"><div class="leg-swatch" style="background:#639922"></div>Green res.</div>
+    <div class="leg-item"><div class="leg-swatch" style="background:#1D9E75"></div>Parkland</div>
+    <div class="leg-item"><div class="leg-swatch" style="background:#888780"></div>Urban</div>
+    <div class="leg-item"><div class="leg-swatch" style="background:#378ADD"></div>Water</div>
+  </div>
+</div>
+<script>
+var map = L.map('map', {{zoomControl:true}}).setView([1.3521, 103.8198], 11);
+
+// Dark base tiles
+L.tileLayer('https://{{s}}.basemaps.cartocdn.com/dark_nolabels/{{z}}/{{x}}/{{y}}{{r}}.png',
+  {{attribution:'CartoDB', maxZoom:18}}).addTo(map);
+
+var imgBounds = [
+  [{sat_bounds.bottom}, {sat_bounds.left}],
+  [{sat_bounds.top},    {sat_bounds.right}]
+];
+
+// Left pane — satellite
+var leftPane  = map.createPane('left');
+var rightPane = map.createPane('right');
+
+var satLayer = L.imageOverlay(
+  'data:image/png;base64,{sat_b64}', imgBounds,
+  {{opacity:1.0, pane:'left'}}
+).addTo(map);
+
+var lcLayer = L.imageOverlay(
+  'data:image/png;base64,{lc_b64}', imgBounds,
+  {{opacity:0.85, pane:'right'}}
+).addTo(map);
+
+// ── Swipe handle ──
+var mapDiv    = document.getElementById('map');
+var handle    = document.createElement('div');
+handle.className = 'swipe-handle';
+var arrow     = document.createElement('div');
+arrow.className = 'swipe-arrow';
+arrow.innerHTML = '⇔';
+handle.appendChild(arrow);
+mapDiv.appendChild(handle);
+
+var mapW = mapDiv.offsetWidth;
+var pos  = mapW / 2;
+
+function setClip(x) {{
+  pos  = Math.max(0, Math.min(mapW, x));
+  var pct = (pos / mapW * 100).toFixed(2);
+  leftPane.style.clip  = 'rect(0px, ' + pos + 'px, 9999px, 0px)';
+  rightPane.style.clip = 'rect(0px, 9999px, 9999px, ' + pos + 'px)';
+  handle.style.left    = pos + 'px';
+}}
+
+// Initialise
+map.whenReady(function() {{
+  mapW = mapDiv.offsetWidth;
+  setClip(mapW / 2);
+}});
+
+// Drag
+var dragging = false;
+handle.addEventListener('mousedown',  function(e) {{ dragging=true; e.preventDefault(); }});
+handle.addEventListener('touchstart', function(e) {{ dragging=true; }}, {{passive:true}});
+document.addEventListener('mouseup',   function() {{ dragging=false; }});
+document.addEventListener('touchend',  function() {{ dragging=false; }});
+document.addEventListener('mousemove', function(e) {{
+  if (!dragging) return;
+  var rect = mapDiv.getBoundingClientRect();
+  setClip(e.clientX - rect.left);
+}});
+document.addEventListener('touchmove', function(e) {{
+  if (!dragging) return;
+  var rect = mapDiv.getBoundingClientRect();
+  setClip(e.touches[0].clientX - rect.left);
+}}, {{passive:true}});
+
+window.addEventListener('resize', function() {{
+  mapW = mapDiv.offsetWidth;
+  setClip(pos);
+}});
+</script>
+</body>
+</html>"""
+
+                st.components.v1.html(swipe_html, height=580, scrolling=False)
+
+        # ════════════════════════════════════════════════════════════════════
+        # MODE B — Standard folium map with boundaries + click stats
+        # ════════════════════════════════════════════════════════════════════
+        else:
+            m = folium.Map(
+                location=[1.3521, 103.8198],
+                zoom_start=11,
+                tiles=None,
+            )
+
             folium.TileLayer(
                 tiles="https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png",
-                attr="CartoDB",
-                name="Base",
-                show=True,
+                attr="CartoDB", name="Base", show=True,
             ).add_to(m)
-            sat_img = Image.fromarray(sat_rgba, mode="RGBA")
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-                sat_img.save(tmp.name)
-                folium.raster_layers.ImageOverlay(
-                    image=tmp.name,
-                    bounds=[
-                        [sat_bounds.bottom, sat_bounds.left],
-                        [sat_bounds.top,    sat_bounds.right],
-                    ],
-                    opacity=1.0,
-                    name="Satellite image",
-                    zindex=1,
+
+            # Satellite underneath
+            if has_sat:
+                sat_img = Image.fromarray(sat_rgba, mode="RGBA")
+                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                    sat_img.save(tmp.name)
+                    folium.raster_layers.ImageOverlay(
+                        image=tmp.name,
+                        bounds=[[sat_bounds.bottom, sat_bounds.left],
+                                [sat_bounds.top,    sat_bounds.right]],
+                        opacity=1.0, name="Satellite image", zindex=1,
+                    ).add_to(m)
+
+            # Classified raster on top
+            if has_lc:
+                lc_img = Image.fromarray(rgba, mode="RGBA")
+                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                    lc_img.save(tmp.name)
+                    folium.raster_layers.ImageOverlay(
+                        image=tmp.name,
+                        bounds=[[bounds.bottom, bounds.left],
+                                [bounds.top,    bounds.right]],
+                        opacity=0.75, name="Classified land cover", zindex=2,
+                    ).add_to(m)
+            else:
+                st.info("No classified raster found.")
+
+            # Planning area boundaries
+            if gdf is not None:
+                merged = gdf.merge(
+                    df[["PLN_AREA_N", "name", "region", "pct_urban", "pct_green_total",
+                        "pct_parkland", "pct_green_res", "pct_water", "pop2020_total"]],
+                    on="PLN_AREA_N", how="left",
+                )
+                GeoJson(
+                    merged.__geo_interface__,
+                    name="Planning areas",
+                    style_function=lambda f: {
+                        "fillColor": "transparent", "color": "#ffffff",
+                        "weight": 1.0, "fillOpacity": 0,
+                    },
+                    highlight_function=lambda f: {
+                        "fillColor": "#ffffff", "fillOpacity": 0.2,
+                        "weight": 2.5, "color": "#ffffff",
+                    },
+                    tooltip=GeoJsonTooltip(
+                        fields=["name", "region", "pop2020_total",
+                                "pct_urban", "pct_green_total", "pct_water"],
+                        aliases=["Area", "Region", "Population",
+                                 "% Urban", "% Green (total)", "% Water"],
+                        localize=True, sticky=True,
+                    ),
                 ).add_to(m)
-        else:
-            st.caption("No satellite image found — using CartoDB basemap.")
+            else:
+                st.info("No shapefile found.")
 
-        # ── Classified raster overlay ──
-        rgba, bounds = load_raster_preview()
-        if rgba is not None:
-            img = Image.fromarray(rgba, mode="RGBA")
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-                img.save(tmp.name)
-                folium.raster_layers.ImageOverlay(
-                    image=tmp.name,
-                    bounds=[[bounds.bottom, bounds.left], [bounds.top, bounds.right]],
-                    opacity=0.7,
-                    name="Classified land cover",
-                    zindex=2,
-                ).add_to(m)
-        else:
-            st.info("No raster file found. Place your classified GeoTIFF in the app folder to see it here.")
+            # Legend
+            legend_html = """
+            <div style='position:fixed;bottom:30px;left:30px;z-index:9999;
+                         background:rgba(0,0,0,0.7);color:#fff;
+                         padding:10px 14px;border-radius:8px;
+                         font-size:12px;line-height:1.8'>
+              <b>Land cover</b><br>
+              <span style='color:#639922'>■</span> Green residential<br>
+              <span style='color:#1D9E75'>■</span> Parkland<br>
+              <span style='color:#888780'>■</span> Urban<br>
+              <span style='color:#378ADD'>■</span> Water
+            </div>"""
+            m.get_root().html.add_child(folium.Element(legend_html))
+            folium.LayerControl().add_to(m)
+            map_data = st_folium(m, width="100%", height=580,
+                                 returned_objects=["last_object_clicked_tooltip"])
 
-        # ── Planning area boundaries ──
-        if gdf is not None:
-            merged = gdf.merge(
-                df[["PLN_AREA_N", "name", "region", "pct_urban", "pct_green_total",
-                    "pct_parkland", "pct_green_res", "pct_water", "pop2020_total"]],
-                on="PLN_AREA_N", how="left",
-            )
-            GeoJson(
-                merged.__geo_interface__,
-                name="Planning areas",
-                style_function=lambda f: {
-                    "fillColor":   "transparent",
-                    "color":       "#333333",
-                    "weight":      1.2,
-                    "fillOpacity": 0,
-                },
-                highlight_function=lambda f: {
-                    "fillColor":   "#ffffff",
-                    "fillOpacity": 0.25,
-                    "weight":      2.5,
-                    "color":       "#111111",
-                },
-                tooltip=GeoJsonTooltip(
-                    fields=["name", "region", "pop2020_total",
-                            "pct_urban", "pct_green_total", "pct_water"],
-                    aliases=["Area", "Region", "Population",
-                             "% Urban", "% Green (total)", "% Water"],
-                    localize=True,
-                    sticky=True,
-                ),
-            ).add_to(m)
-        else:
-            st.info("No shapefile found. Place your planning area .geojson in the app folder.")
-
-        # ── Legend ──
-        legend_html = """
-        <div style='position:fixed;bottom:30px;left:30px;z-index:9999;
-                     background:white;padding:10px 14px;border-radius:8px;
-                     border:1px solid #ddd;font-size:12px;line-height:1.8'>
-          <b>Land cover</b><br>
-          <span style='color:#639922'>■</span> Green residential<br>
-          <span style='color:#1D9E75'>■</span> Parkland<br>
-          <span style='color:#888780'>■</span> Urban<br>
-          <span style='color:#378ADD'>■</span> Water
-        </div>"""
-        m.get_root().html.add_child(folium.Element(legend_html))
-
-        folium.LayerControl().add_to(m)
-        map_data = st_folium(m, width="100%", height=580,
-                             returned_objects=["last_object_clicked_tooltip"])
-
+    # ── Right panel — stats (Mode B only) ──
     with col_info:
-        st.subheader("Planning area stats")
-        clicked = map_data.get("last_object_clicked_tooltip") if map_data else None
+        if map_mode == "🛰 Satellite + classification swipe":
+            st.subheader("How to use")
+            st.markdown("""
+            **Drag the ⇔ handle** left and right to reveal the satellite image underneath the classification.
 
-        if clicked and "name" in str(clicked):
-            try:
-                area_name = clicked.get("name", "") if isinstance(clicked, dict) else ""
-                row = df[df["name"] == area_name]
-                if not row.empty:
-                    r = row.iloc[0]
-                    st.markdown(f"### {r['name']}")
-                    st.caption(r["region"].title() + " Region")
-                    pop = int(r["pop2020_total"]) if pd.notna(r["pop2020_total"]) else None
-                    st.metric("Population",      f"{pop:,}" if pop else "n/a")
-                    st.metric("% Urban",         f"{r['pct_urban']:.1f}%")
-                    st.metric("% Green (total)", f"{r['pct_green_total']:.1f}%")
-                    st.metric("% Parkland",      f"{r['pct_parkland']:.1f}%")
-                    st.metric("% Water",         f"{r['pct_water']:.1f}%")
-                    fig_mini = go.Figure(go.Bar(
-                        x=[r["pct_green_res"]], y=[""],
-                        orientation="h", name="Green res.", marker_color="#639922",
-                    ))
-                    for key, label, color in [
-                        ("pct_parkland", "Parkland", "#1D9E75"),
-                        ("pct_urban",    "Urban",    "#888780"),
-                        ("pct_water",    "Water",    "#378ADD"),
-                    ]:
-                        fig_mini.add_trace(go.Bar(
-                            x=[r[key]], y=[""], orientation="h",
-                            name=label, marker_color=color,
-                        ))
-                    fig_mini.update_layout(
-                        barmode="stack", height=60,
-                        margin=dict(l=0, r=0, t=0, b=0),
-                        showlegend=False,
-                        xaxis=dict(range=[0, 100], showticklabels=False),
-                        plot_bgcolor="rgba(0,0,0,0)",
-                        paper_bgcolor="rgba(0,0,0,0)",
-                    )
-                    st.plotly_chart(fig_mini, use_container_width=True)
-            except Exception:
-                pass
-        else:
-            st.caption("Click a planning area on the map to see its statistics here.")
+            Switch to **Classification + boundaries** mode to click planning areas for detailed stats.
+            """)
             st.divider()
             st.markdown("**Singapore overall**")
             for key, label in LC_LABELS.items():
                 st.metric(label, f"{df[key].mean():.1f}%")
+        else:
+            st.subheader("Planning area stats")
+            clicked = map_data.get("last_object_clicked_tooltip") if map_data else None
+
+            if clicked and "name" in str(clicked):
+                try:
+                    area_name = clicked.get("name", "") if isinstance(clicked, dict) else ""
+                    row = df[df["name"] == area_name]
+                    if not row.empty:
+                        r = row.iloc[0]
+                        st.markdown(f"### {r['name']}")
+                        st.caption(r["region"].title() + " Region")
+                        pop = int(r["pop2020_total"]) if pd.notna(r["pop2020_total"]) else None
+                        st.metric("Population",      f"{pop:,}" if pop else "n/a")
+                        st.metric("% Urban",         f"{r['pct_urban']:.1f}%")
+                        st.metric("% Green (total)", f"{r['pct_green_total']:.1f}%")
+                        st.metric("% Parkland",      f"{r['pct_parkland']:.1f}%")
+                        st.metric("% Water",         f"{r['pct_water']:.1f}%")
+                        fig_mini = go.Figure(go.Bar(
+                            x=[r["pct_green_res"]], y=[""],
+                            orientation="h", name="Green res.", marker_color="#639922",
+                        ))
+                        for key, label, color in [
+                            ("pct_parkland", "Parkland", "#1D9E75"),
+                            ("pct_urban",    "Urban",    "#888780"),
+                            ("pct_water",    "Water",    "#378ADD"),
+                        ]:
+                            fig_mini.add_trace(go.Bar(
+                                x=[r[key]], y=[""], orientation="h",
+                                name=label, marker_color=color,
+                            ))
+                        fig_mini.update_layout(
+                            barmode="stack", height=60,
+                            margin=dict(l=0, r=0, t=0, b=0),
+                            showlegend=False,
+                            xaxis=dict(range=[0, 100], showticklabels=False),
+                            plot_bgcolor="rgba(0,0,0,0)",
+                            paper_bgcolor="rgba(0,0,0,0)",
+                        )
+                        st.plotly_chart(fig_mini, use_container_width=True)
+                except Exception:
+                    pass
+            else:
+                st.caption("Click a planning area on the map to see its statistics here.")
+                st.divider()
+                st.markdown("**Singapore overall**")
+                for key, label in LC_LABELS.items():
+                    st.metric(label, f"{df[key].mean():.1f}%")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
