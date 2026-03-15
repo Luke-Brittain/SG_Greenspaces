@@ -827,30 +827,93 @@ elif page == "⚖️ Compare":
                     "75_79","80_84","85_89","90andOver"]
 
     def make_aggregate_row(subset, label, region_val):
-        """Return a Series representing the population-weighted average of subset."""
-        num_cols = [c for c in subset.columns if subset[c].dtype in [float, "float64"]]
+        """Return a Series representing the population-weighted average of subset.
+
+        Fixes:
+        - Includes int64 columns (pop2020_m/f/t_*) not just float64
+        - Age band counts are summed (not averaged) — total headcount per band
+        - Income is averaged only over rows that actually have income data
+        - pct_age10_* and pct_age_* are recomputed from aggregated counts
+        """
         pop = subset["pop2020_total"].fillna(0)
         total_pop = pop.sum()
         agg = {}
-        # Population-weighted mean for pct columns, straight sum for pop
+
+        # Numeric columns — include both float64 and int64
+        num_cols = [c for c in subset.columns
+                    if subset[c].dtype in [float, "float64", int, "int64", "Int64"]]
+
+        # Income columns — average only over rows WITH income data
+        inc_keys = ["income_total_workers_thousands", "income_below_1000",
+                    "income_1000_1999", "income_2000_2999", "income_3000_3999",
+                    "income_4000_4999", "income_5000_9999", "income_10000_over"]
+        inc_subset = subset[subset["income_total_workers_thousands"].notna() &
+                            (subset["income_total_workers_thousands"] > 0)]
+
         for c in num_cols:
             if c == "pop2020_total":
                 agg[c] = total_pop
-            elif c.startswith("pct_") or c.startswith("pop2020_m_") or                  c.startswith("pop2020_f_") or c.startswith("pop2020_t_"):
+
+            # Age band raw counts — sum across all areas
+            elif (c.startswith("pop2020_m_") or c.startswith("pop2020_f_") or
+                  c.startswith("pop2020_t_")):
+                agg[c] = subset[c].fillna(0).sum()
+
+            # pct_ land cover / green metrics — population-weighted mean
+            elif c.startswith("pct_"):
                 w = pop * subset[c].fillna(0)
                 agg[c] = w.sum() / total_pop if total_pop > 0 else 0.0
+
+            # Income columns — mean over income-reporting areas only
+            elif c in inc_keys:
+                if not inc_subset.empty:
+                    agg[c] = inc_subset[c].fillna(0).mean()
+                else:
+                    agg[c] = np.nan
+
+            # Broad age band counts (pop2020_0_14 etc) — sum
+            elif c.startswith("pop2020_"):
+                agg[c] = subset[c].fillna(0).sum()
+
             else:
                 agg[c] = subset[c].fillna(0).mean()
+
         agg["name"]   = label
         agg["region"] = region_val
+
         # Recompute GUB and LGS from aggregated pcts
-        g = agg.get("pct_green_total", 0)
-        u = agg.get("pct_urban", 0)
-        w = agg.get("pct_water", 0)
+        g  = agg.get("pct_green_total", 0)
+        u  = agg.get("pct_urban", 0)
+        wa = agg.get("pct_water", 0)
         agg["gub"] = round((g - u) / (g + u), 3) if (g + u) > 0 else 0.0
-        nw = 100 - w
+        nw = 100 - wa
         agg["lgs"] = round((agg.get("pct_parkland", 0) + agg.get("pct_green_res", 0))
                            / nw * 100, 1) if nw > 0 else 0.0
+
+        # Recompute pct_age10_* from summed age band counts
+        t_pop = agg.get("pop2020_total", 1) or 1
+        bands_10 = [
+            ("pct_age10_0_9",   ["0_4",  "5_9"]),
+            ("pct_age10_10_19", ["10_14","15_19"]),
+            ("pct_age10_20_29", ["20_24","25_29"]),
+            ("pct_age10_30_39", ["30_34","35_39"]),
+            ("pct_age10_40_49", ["40_44","45_49"]),
+            ("pct_age10_50_59", ["50_54","55_59"]),
+            ("pct_age10_60_69", ["60_64","65_69"]),
+            ("pct_age10_70_79", ["70_74","75_79"]),
+            ("pct_age10_80plus",["80_84","85_89","90andOver"]),
+        ]
+        for pct_col, b_list in bands_10:
+            agg[pct_col] = sum(agg.get(f"pop2020_t_{b}", 0) for b in b_list) / t_pop * 100
+
+        # Recompute broad bands
+        agg["pct_age_0_14"]   = sum(agg.get(f"pop2020_t_{b}", 0) for b in ["0_4","5_9","10_14"]) / t_pop * 100
+        agg["pct_age_15_64"]  = sum(agg.get(f"pop2020_t_{b}", 0) for b in
+                                    ["15_19","20_24","25_29","30_34","35_39",
+                                     "40_44","45_49","50_54","55_59","60_64"]) / t_pop * 100
+        agg["pct_age_65plus"] = sum(agg.get(f"pop2020_t_{b}", 0) for b in
+                                    ["65_69","70_74","75_79","80_84","85_89","90andOver"]) / t_pop * 100
+
         return pd.Series(agg)
 
     AGGREGATE_OPTIONS = {
