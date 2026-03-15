@@ -202,15 +202,17 @@ if page == "🗺️ Map":
     st.title("Land cover map")
 
     sat_rgba, sat_bounds = load_satellite_preview()
-    # ── Temporary debug — remove once working ──
-    import os
+
+    # ── Temporary debug — remove once satellite is confirmed loading ──
     st.sidebar.markdown("**Debug — files in BASE_DIR:**")
-    for f in sorted(os.listdir(BASE_DIR)):
-        st.sidebar.caption(f)
-    rgba, bounds         = load_raster_preview()
-    
-        # ── Encode both images to base64 for inline HTML ──
-        import base64, io
+    for _f in sorted(os.listdir(BASE_DIR)):
+        st.sidebar.caption(_f)
+    # ───────────────────────────────────────────────────────────────────
+
+    rgba, bounds = load_raster_preview()
+
+    # ── Encode both images to base64 for inline HTML ──
+    import base64, io
 
     def img_to_b64(arr: np.ndarray) -> str:
         buf = io.BytesIO()
