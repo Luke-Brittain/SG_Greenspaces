@@ -16,6 +16,11 @@ from PIL import Image
 
 BASE_DIR = Path(__file__).parent
 
+# Temporary debug — remove after confirming
+import os
+_files = os.listdir(BASE_DIR)
+st.sidebar.caption("Files found: " + ", ".join(_files))
+
 # ── Page config ────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Singapore Land Cover & Demographics",
@@ -116,8 +121,8 @@ def load_shapefile():
 @st.cache_data
 def load_raster_preview():
     for path in [
+        BASE_DIR / "classified_nodata.tif",       # your actual file
         BASE_DIR / "classified_nonodata.tif",
-        BASE_DIR / "classified_nodata.tif",
         BASE_DIR / "classified.tif",
         BASE_DIR / "land_cover.tif",
     ]:
@@ -134,14 +139,12 @@ def load_raster_preview():
             return rgba, bounds
     return None, None
 
-
 @st.cache_data
 def load_satellite_preview():
     for path in [
-        BASE_DIR / "SG_coastal_complete_2025_small.tif",
+        BASE_DIR / "SG_coastal_complete_2025_small.tif",   # your actual file
         BASE_DIR / "SG_coastal_complete_2025.tif",
         BASE_DIR / "satellite_image.tif",
-        BASE_DIR / "SG_satellite.tif",
         BASE_DIR / "basemap.tif",
     ]:
         if os.path.exists(path):
