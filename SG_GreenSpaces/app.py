@@ -246,8 +246,10 @@ if page == "📖 Introduction":
         "📊 What the data shows</div>"
         "<div style='font-size:13px;line-height:1.7'>"
         "Preliminary analysis of the 2020 data finds that green space is most concentrated in "
-        "Singapore's <strong>North and West regions</strong>, driven by large nature reserves and water catchments. "
-        "Among residential areas, <strong>green space coverage correlates positively with income</strong> "
+        "Singapore's <strong>North and West regions</strong> by total area — though this is largely driven "
+        "by large nature reserves and water catchments rather than residential green cover. "
+        "Among <strong>residential planning areas specifically</strong>, the regional distribution is more even. "
+        "Across all areas, <strong>green space coverage correlates positively with income</strong> "
         "(r ≈ +0.50 for LGS vs high earners) — wealthier planning areas tend to have meaningfully more "
         "habitable green space. At the same time, <strong>older populations (aged 60+) tend to live in "
         "greener areas</strong>, suggesting established residential neighbourhoods retain more tree cover "
@@ -497,12 +499,15 @@ elif page == "🗺️ Map":
         # ── Inject panel HTML, tooltip CSS, clamp JS, hover handler ───────────
         _panel_and_js = """
         <style>
+          html, body { overflow:hidden; }
           #stats-panel {
-            position:absolute; top:12px; right:12px; z-index:9999;
-            background:rgba(15,15,15,0.9); color:#fff;
-            padding:14px 16px; border-radius:10px;
-            font-family:sans-serif; font-size:12px; line-height:1.7;
-            min-width:200px; max-width:220px;
+            position:absolute; top:10px; right:10px; z-index:9999;
+            background:rgba(15,15,15,0.92); color:#fff;
+            padding:12px 14px; border-radius:10px;
+            font-family:sans-serif; font-size:11px; line-height:1.65;
+            width:200px;
+            max-height:calc(100vh - 20px);
+            overflow-y:auto;
             box-shadow:0 4px 20px rgba(0,0,0,0.6);
             pointer-events:none;
           }
@@ -1445,14 +1450,16 @@ elif page == "⚖️ Compare":
             opacity_a = opacity_b = "1"
 
         with col:
+            # Wrap name in a block that truncates via CSS only — no hard char limit
             st.markdown(f"""
             <div style="background:var(--color-background-secondary,#f5f5f5);
                         border-radius:8px;padding:10px 12px;margin-bottom:4px">
               <div style="font-size:13px;font-weight:500;color:var(--color-text-secondary,#555);margin-bottom:8px">{label}</div>
               <div style="opacity:{opacity_a}">
                 <div style="font-size:10px;color:#639922;font-weight:500;
-                            text-overflow:ellipsis;overflow:hidden;white-space:nowrap"
-                     title="{pa_a}">{pa_a[:14]}{'…' if len(pa_a)>14 else ''}</div>
+                            overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
+                            max-width:100%;cursor:default"
+                     title="{pa_a}">{pa_a}</div>
                 <div style="font-size:16px;font-weight:700;color:#639922;line-height:1.3">
                   {sa}<span style="font-size:11px;margin-left:3px">{badge_a}</span>
                 </div>
@@ -1460,8 +1467,9 @@ elif page == "⚖️ Compare":
               <div style="height:1px;background:rgba(128,128,128,0.15);margin:5px 0"></div>
               <div style="opacity:{opacity_b}">
                 <div style="font-size:10px;color:#378ADD;font-weight:500;
-                            text-overflow:ellipsis;overflow:hidden;white-space:nowrap"
-                     title="{pa_b}">{pa_b[:14]}{'…' if len(pa_b)>14 else ''}</div>
+                            overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
+                            max-width:100%;cursor:default"
+                     title="{pa_b}">{pa_b}</div>
                 <div style="font-size:16px;font-weight:700;color:#378ADD;line-height:1.3">
                   {sb}<span style="font-size:11px;margin-left:3px">{badge_b}</span>
                 </div>
