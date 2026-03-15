@@ -260,7 +260,7 @@ if page == "🗺️ Map":
             if col in merged.columns:
                 merged[col] = merged[col].fillna(0).round(3)
 
-        folium.GeoJson(
+        geojson_layer = folium.GeoJson(
             merged.__geo_interface__,
             name="Planning areas",
             style_function=lambda f: {
@@ -284,206 +284,84 @@ if page == "🗺️ Map":
                     "line-height:1.6;word-wrap:break-word;"
                 ),
             ),
-        ).add_to(m)
+        )
+        geojson_layer.add_to(m)
+        _layer_var = geojson_layer.get_name()
 
-        m.get_root().html.add_child(folium.Element("""
-        <style>
-          #stats-panel {
-            position:fixed; top:80px; right:20px; z-index:9999;
-            background:rgba(15,15,15,0.9); color:#fff;
-            padding:14px 16px; border-radius:10px;
-            font-family:sans-serif; font-size:12px; line-height:1.7;
-            min-width:200px; max-width:220px;
-            box-shadow:0 4px 20px rgba(0,0,0,0.6);
-            pointer-events:none;
-          }
-          #stats-panel .sp-title {font-size:14px;font-weight:700;margin-bottom:2px;}
-          #stats-panel .sp-region {font-size:11px;color:#aaa;margin-bottom:10px;}
-          #stats-panel .sp-row {display:flex;justify-content:space-between;padding:3px 0;border-bottom:0.5px solid rgba(255,255,255,0.08);}
-          #stats-panel .sp-row:last-child{border-bottom:none;}
-          #stats-panel .sp-label {color:#bbb;}
-          #stats-panel .sp-val {font-weight:600;color:#fff;}
-          #stats-panel .sp-divider {border:none;border-top:0.5px solid rgba(255,255,255,0.15);margin:8px 0;}
-          #stats-panel .sp-section {font-size:10px;color:#888;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;}
-          .leaflet-tooltip {
-            background: rgba(15,15,15,0.88) !important; border: none !important;
-            border-radius: 8px !important; box-shadow: 0 4px 16px rgba(0,0,0,0.5) !important;
-            padding: 8px 12px !important; color: #fff !important;
-            font-size: 12px !important; width: 260px !important;
-            max-width: 260px !important; min-width: 260px !important;
-            line-height: 1.6 !important;
-          }
-          .leaflet-tooltip::before {display:none !important;}
-          .leaflet-tooltip table  {border:none !important;border-collapse:collapse !important;width:100% !important;table-layout:fixed !important;}
-          .leaflet-tooltip th     {color:#bbb !important;font-weight:400 !important;font-size:11px !important;padding:2px 8px 2px 0 !important;border:none !important;white-space:nowrap !important;text-align:left !important;vertical-align:middle !important;width:45% !important;}
-          .leaflet-tooltip td     {color:#fff !important;font-weight:600 !important;font-size:12px !important;padding:2px 0 !important;border:none !important;text-align:right !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;width:55% !important;}
-          .leaflet-tooltip tr     {border:none !important;}
-        </style>
-
-        <div id="stats-panel">
-          <div class="sp-title">Singapore overall</div>
-          <div class="sp-region">Hover a planning area to update</div>
-          <div class="sp-section">Land cover (avg)</div>
-          <div class="sp-row"><span class="sp-label">Green res.</span><span class="sp-val">20.6%</span></div>
-          <div class="sp-row"><span class="sp-label">Parkland</span><span class="sp-val">37.1%</span></div>
-          <div class="sp-row"><span class="sp-label">Urban</span><span class="sp-val">32.5%</span></div>
-          <div class="sp-row"><span class="sp-label">Water</span><span class="sp-val">9.7%</span></div>
-          <hr class="sp-divider">
-          <div class="sp-section">Green metrics (avg)</div>
-          <div class="sp-row"><span class="sp-label">GUB</span><span class="sp-val">+0.282</span></div>
-          <div class="sp-row"><span class="sp-label">LGS</span><span class="sp-val">64.1%</span></div>
-        </div>
-
-        <div style="position:fixed;bottom:30px;left:30px;z-index:9999;
-                    background:rgba(0,0,0,0.7);color:#fff;padding:10px 14px;
-                    border-radius:8px;font-size:12px;line-height:1.8">
-          <b>Land cover</b><br>
-          <span style="color:#639922">&#9632;</span> Green residential<br>
-          <span style="color:#1D9E75">&#9632;</span> Parkland<br>
-          <span style="color:#888780">&#9632;</span> Urban<br>
-          <span style="color:#378ADD">&#9632;</span> Water
-        </div>
-
+        # Scan window object for all Leaflet GeoJSON layers — works regardless of folium var name
+        _on_each = """
         <script>
         (function() {
-          var panel  = document.getElementById('stats-panel');
-          // Full PA data embedded — keyed by PLN_AREA_N (uppercase)
-          var DATA   = {"BEDOK": {"name": "Bedok", "region": "EAST", "pop": 276990, "gr": 26.7, "pk": 25.8, "ur": 41.0, "wa": 6.5, "gub": 0.123, "lgs": 56.1}, "BOON LAY": {"name": "Boon Lay", "region": "WEST", "pop": 40, "gr": 19.3, "pk": 19.2, "ur": 48.6, "wa": 12.9, "gub": -0.116, "lgs": 44.2}, "BUKIT BATOK": {"name": "Bukit Batok", "region": "WEST", "pop": 158030, "gr": 23.0, "pk": 46.8, "ur": 28.6, "wa": 1.6, "gub": 0.419, "lgs": 70.9}, "BUKIT MERAH": {"name": "Bukit Merah", "region": "CENTRAL", "pop": 151250, "gr": 21.1, "pk": 33.3, "ur": 39.8, "wa": 5.8, "gub": 0.155, "lgs": 57.7}, "BUKIT PANJANG": {"name": "Bukit Panjang", "region": "WEST", "pop": 138270, "gr": 20.0, "pk": 56.8, "ur": 22.0, "wa": 1.3, "gub": 0.555, "lgs": 77.8}, "BUKIT TIMAH": {"name": "Bukit Timah", "region": "CENTRAL", "pop": 77860, "gr": 32.6, "pk": 42.5, "ur": 24.3, "wa": 0.6, "gub": 0.511, "lgs": 75.6}, "CENTRAL WATER CATCHMENT": {"name": "Central Water Catchment", "region": "NORTH", "pop": null, "gr": 4.0, "pk": 75.5, "ur": 3.3, "wa": 17.2, "gub": 0.92, "lgs": 96.0}, "CHANGI": {"name": "Changi", "region": "EAST", "pop": 1850, "gr": 14.4, "pk": 33.9, "ur": 40.8, "wa": 10.9, "gub": 0.084, "lgs": 54.2}, "CHOA CHU KANG": {"name": "Choa Chu Kang", "region": "WEST", "pop": 192070, "gr": 33.8, "pk": 21.1, "ur": 43.1, "wa": 1.9, "gub": 0.12, "lgs": 56.0}, "CLEMENTI": {"name": "Clementi", "region": "WEST", "pop": 91990, "gr": 28.1, "pk": 28.2, "ur": 38.5, "wa": 5.2, "gub": 0.188, "lgs": 59.4}, "HOUGANG": {"name": "Hougang", "region": "NORTH-EAST", "pop": 227560, "gr": 27.4, "pk": 24.0, "ur": 44.8, "wa": 3.8, "gub": 0.069, "lgs": 53.4}, "JURONG EAST": {"name": "Jurong East", "region": "WEST", "pop": 78600, "gr": 19.4, "pk": 19.6, "ur": 35.6, "wa": 25.4, "gub": 0.046, "lgs": 52.3}, "JURONG WEST": {"name": "Jurong West", "region": "WEST", "pop": 262730, "gr": 28.6, "pk": 22.5, "ur": 44.9, "wa": 3.9, "gub": 0.065, "lgs": 53.2}, "PASIR RIS": {"name": "Pasir Ris", "region": "EAST", "pop": 147110, "gr": 20.4, "pk": 35.6, "ur": 34.6, "wa": 9.4, "gub": 0.236, "lgs": 61.8}, "PIONEER": {"name": "Pioneer", "region": "WEST", "pop": 80, "gr": 18.9, "pk": 12.5, "ur": 53.5, "wa": 15.1, "gub": -0.26, "lgs": 37.0}, "PUNGGOL": {"name": "Punggol", "region": "NORTH-EAST", "pop": 174450, "gr": 26.6, "pk": 37.9, "ur": 28.8, "wa": 6.7, "gub": 0.383, "lgs": 69.1}, "QUEENSTOWN": {"name": "Queenstown", "region": "CENTRAL", "pop": 95930, "gr": 18.4, "pk": 30.8, "ur": 39.6, "wa": 11.2, "gub": 0.108, "lgs": 55.4}, "SELETAR": {"name": "Seletar", "region": "NORTH-EAST", "pop": 300, "gr": 14.8, "pk": 50.4, "ur": 25.9, "wa": 8.9, "gub": 0.431, "lgs": 71.6}, "SEMBAWANG": {"name": "Sembawang", "region": "NORTH", "pop": 102640, "gr": 24.0, "pk": 28.9, "ur": 40.7, "wa": 6.4, "gub": 0.13, "lgs": 56.5}, "SENGKANG": {"name": "Sengkang", "region": "NORTH-EAST", "pop": 249370, "gr": 29.4, "pk": 34.5, "ur": 32.9, "wa": 3.2, "gub": 0.32, "lgs": 66.0}, "SERANGOON": {"name": "Serangoon", "region": "NORTH-EAST", "pop": 116900, "gr": 27.8, "pk": 15.4, "ur": 53.7, "wa": 3.2, "gub": -0.108, "lgs": 44.6}, "KALLANG": {"name": "Kallang", "region": "CENTRAL", "pop": 101290, "gr": 24.6, "pk": 22.4, "ur": 40.7, "wa": 12.3, "gub": 0.072, "lgs": 53.6}, "LIM CHU KANG": {"name": "Lim Chu Kang", "region": "NORTH", "pop": 110, "gr": 11.7, "pk": 69.4, "ur": 8.8, "wa": 10.1, "gub": 0.804, "lgs": 90.2}, "NORTH-EASTERN ISLANDS": {"name": "North-Eastern Islands", "region": "NORTH-EAST", "pop": 50, "gr": 8.6, "pk": 53.3, "ur": 15.4, "wa": 22.6, "gub": 0.602, "lgs": 80.0}, "NOVENA": {"name": "Novena", "region": "CENTRAL", "pop": 49330, "gr": 27.9, "pk": 43.2, "ur": 26.9, "wa": 2.0, "gub": 0.451, "lgs": 72.6}, "SIMPANG": {"name": "Simpang", "region": "NORTH", "pop": null, "gr": 5.6, "pk": 59.3, "ur": 2.8, "wa": 32.3, "gub": 0.917, "lgs": 95.9}, "SOUTHERN ISLANDS": {"name": "Southern Islands", "region": "CENTRAL", "pop": 1940, "gr": 15.9, "pk": 52.3, "ur": 14.5, "wa": 17.2, "gub": 0.649, "lgs": 82.4}, "SUNGEI KADUT": {"name": "Sungei Kadut", "region": "NORTH", "pop": 750, "gr": 15.5, "pk": 46.7, "ur": 23.2, "wa": 14.6, "gub": 0.457, "lgs": 72.8}, "TOA PAYOH": {"name": "Toa Payoh", "region": "CENTRAL", "pop": 121850, "gr": 29.4, "pk": 24.1, "ur": 43.8, "wa": 2.6, "gub": 0.1, "lgs": 54.9}, "TUAS": {"name": "Tuas", "region": "WEST", "pop": 70, "gr": 11.6, "pk": 19.1, "ur": 43.3, "wa": 25.9, "gub": -0.17, "lgs": 41.4}, "WESTERN ISLANDS": {"name": "Western Islands", "region": "WEST", "pop": 10, "gr": 11.6, "pk": 33.7, "ur": 35.3, "wa": 19.4, "gub": 0.124, "lgs": 56.2}, "WESTERN WATER CATCHMENT": {"name": "Western Water Catchment", "region": "WEST", "pop": 640, "gr": 11.4, "pk": 65.7, "ur": 10.9, "wa": 12.0, "gub": 0.752, "lgs": 87.6}, "WOODLANDS": {"name": "Woodlands", "region": "NORTH", "pop": 255130, "gr": 30.2, "pk": 26.2, "ur": 39.5, "wa": 4.2, "gub": 0.176, "lgs": 58.9}, "RIVER VALLEY": {"name": "River Valley", "region": "CENTRAL", "pop": 10070, "gr": 36.3, "pk": 29.6, "ur": 33.0, "wa": 1.1, "gub": 0.333, "lgs": 66.6}, "ROCHOR": {"name": "Rochor", "region": "CENTRAL", "pop": 13120, "gr": 17.7, "pk": 9.1, "ur": 66.1, "wa": 7.2, "gub": -0.423, "lgs": 28.9}, "SINGAPORE RIVER": {"name": "Singapore River", "region": "CENTRAL", "pop": 3260, "gr": 21.9, "pk": 11.7, "ur": 51.0, "wa": 15.4, "gub": -0.206, "lgs": 39.7}, "STRAITS VIEW": {"name": "Straits View", "region": "CENTRAL", "pop": null, "gr": 10.8, "pk": 50.9, "ur": 9.3, "wa": 29.0, "gub": 0.738, "lgs": 86.9}, "CHANGI BAY": {"name": "Changi Bay", "region": "EAST", "pop": null, "gr": 19.2, "pk": 51.8, "ur": 23.6, "wa": 5.5, "gub": 0.501, "lgs": 75.1}, "MARINE PARADE": {"name": "Marine Parade", "region": "CENTRAL", "pop": 46220, "gr": 23.7, "pk": 37.0, "ur": 37.0, "wa": 2.3, "gub": 0.243, "lgs": 62.1}, "DOWNTOWN CORE": {"name": "Downtown Core", "region": "CENTRAL", "pop": 3190, "gr": 16.2, "pk": 12.7, "ur": 45.3, "wa": 25.8, "gub": -0.221, "lgs": 38.9}, "MARINA EAST": {"name": "Marina East", "region": "CENTRAL", "pop": null, "gr": 8.8, "pk": 51.9, "ur": 16.8, "wa": 22.4, "gub": 0.566, "lgs": 78.2}, "MARINA SOUTH": {"name": "Marina South", "region": "CENTRAL", "pop": null, "gr": 16.2, "pk": 54.9, "ur": 9.6, "wa": 19.3, "gub": 0.762, "lgs": 88.1}, "MUSEUM": {"name": "Museum", "region": "CENTRAL", "pop": 510, "gr": 22.1, "pk": 41.9, "ur": 33.2, "wa": 2.7, "gub": 0.317, "lgs": 65.8}, "NEWTON": {"name": "Newton", "region": "CENTRAL", "pop": 8260, "gr": 28.3, "pk": 47.1, "ur": 23.8, "wa": 0.9, "gub": 0.52, "lgs": 76.1}, "ORCHARD": {"name": "Orchard", "region": "CENTRAL", "pop": 920, "gr": 24.1, "pk": 14.6, "ur": 51.5, "wa": 9.7, "gub": -0.142, "lgs": 42.9}, "OUTRAM": {"name": "Outram", "region": "CENTRAL", "pop": 18340, "gr": 16.6, "pk": 26.4, "ur": 51.3, "wa": 5.7, "gub": -0.088, "lgs": 45.6}, "TAMPINES": {"name": "Tampines", "region": "EAST", "pop": 259900, "gr": 25.2, "pk": 32.1, "ur": 37.8, "wa": 4.9, "gub": 0.205, "lgs": 60.3}, "TANGLIN": {"name": "Tanglin", "region": "CENTRAL", "pop": 21810, "gr": 31.6, "pk": 50.0, "ur": 17.9, "wa": 0.4, "gub": 0.64, "lgs": 81.9}, "TENGAH": {"name": "Tengah", "region": "WEST", "pop": 10, "gr": 12.5, "pk": 49.6, "ur": 28.6, "wa": 9.2, "gub": 0.369, "lgs": 68.4}, "MANDAI": {"name": "Mandai", "region": "NORTH", "pop": 2090, "gr": 10.4, "pk": 79.9, "ur": 9.1, "wa": 0.6, "gub": 0.817, "lgs": 90.8}, "BISHAN": {"name": "Bishan", "region": "CENTRAL", "pop": 87320, "gr": 24.7, "pk": 30.4, "ur": 41.7, "wa": 3.1, "gub": 0.138, "lgs": 56.9}, "ANG MO KIO": {"name": "Ang Mo Kio", "region": "CENTRAL", "pop": 162280, "gr": 25.3, "pk": 38.7, "ur": 33.3, "wa": 2.6, "gub": 0.316, "lgs": 65.7}, "GEYLANG": {"name": "Geylang", "region": "CENTRAL", "pop": 110110, "gr": 27.1, "pk": 16.7, "ur": 52.4, "wa": 3.7, "gub": -0.089, "lgs": 45.5}, "PAYA LEBAR": {"name": "Paya Lebar", "region": "EAST", "pop": 40, "gr": 14.1, "pk": 58.3, "ur": 21.4, "wa": 6.1, "gub": 0.544, "lgs": 77.1}, "YISHUN": {"name": "Yishun", "region": "NORTH", "pop": 221610, "gr": 19.9, "pk": 37.1, "ur": 25.8, "wa": 17.2, "gub": 0.377, "lgs": 68.8}};
+          var DATA = {"BEDOK": {"name": "Bedok", "region": "EAST", "pop": 276990, "gr": 26.7, "pk": 25.8, "ur": 41.0, "wa": 6.5, "gub": 0.123, "lgs": 56.1}, "BOON LAY": {"name": "Boon Lay", "region": "WEST", "pop": 40, "gr": 19.3, "pk": 19.2, "ur": 48.6, "wa": 12.9, "gub": -0.116, "lgs": 44.2}, "BUKIT BATOK": {"name": "Bukit Batok", "region": "WEST", "pop": 158030, "gr": 23.0, "pk": 46.8, "ur": 28.6, "wa": 1.6, "gub": 0.419, "lgs": 70.9}, "BUKIT MERAH": {"name": "Bukit Merah", "region": "CENTRAL", "pop": 151250, "gr": 21.1, "pk": 33.3, "ur": 39.8, "wa": 5.8, "gub": 0.155, "lgs": 57.7}, "BUKIT PANJANG": {"name": "Bukit Panjang", "region": "WEST", "pop": 138270, "gr": 20.0, "pk": 56.8, "ur": 22.0, "wa": 1.3, "gub": 0.555, "lgs": 77.8}, "BUKIT TIMAH": {"name": "Bukit Timah", "region": "CENTRAL", "pop": 77860, "gr": 32.6, "pk": 42.5, "ur": 24.3, "wa": 0.6, "gub": 0.511, "lgs": 75.6}, "CENTRAL WATER CATCHMENT": {"name": "Central Water Catchment", "region": "NORTH", "pop": null, "gr": 4.0, "pk": 75.5, "ur": 3.3, "wa": 17.2, "gub": 0.92, "lgs": 96.0}, "CHANGI": {"name": "Changi", "region": "EAST", "pop": 1850, "gr": 14.4, "pk": 33.9, "ur": 40.8, "wa": 10.9, "gub": 0.084, "lgs": 54.2}, "CHOA CHU KANG": {"name": "Choa Chu Kang", "region": "WEST", "pop": 192070, "gr": 33.8, "pk": 21.1, "ur": 43.1, "wa": 1.9, "gub": 0.12, "lgs": 56.0}, "CLEMENTI": {"name": "Clementi", "region": "WEST", "pop": 91990, "gr": 28.1, "pk": 28.2, "ur": 38.5, "wa": 5.2, "gub": 0.188, "lgs": 59.4}, "HOUGANG": {"name": "Hougang", "region": "NORTH-EAST", "pop": 227560, "gr": 27.4, "pk": 24.0, "ur": 44.8, "wa": 3.8, "gub": 0.069, "lgs": 53.4}, "JURONG EAST": {"name": "Jurong East", "region": "WEST", "pop": 78600, "gr": 19.4, "pk": 19.6, "ur": 35.6, "wa": 25.4, "gub": 0.046, "lgs": 52.3}, "JURONG WEST": {"name": "Jurong West", "region": "WEST", "pop": 262730, "gr": 28.6, "pk": 22.5, "ur": 44.9, "wa": 3.9, "gub": 0.065, "lgs": 53.2}, "PASIR RIS": {"name": "Pasir Ris", "region": "EAST", "pop": 147110, "gr": 20.4, "pk": 35.6, "ur": 34.6, "wa": 9.4, "gub": 0.236, "lgs": 61.8}, "PIONEER": {"name": "Pioneer", "region": "WEST", "pop": 80, "gr": 18.9, "pk": 12.5, "ur": 53.5, "wa": 15.1, "gub": -0.26, "lgs": 37.0}, "PUNGGOL": {"name": "Punggol", "region": "NORTH-EAST", "pop": 174450, "gr": 26.6, "pk": 37.9, "ur": 28.8, "wa": 6.7, "gub": 0.383, "lgs": 69.1}, "QUEENSTOWN": {"name": "Queenstown", "region": "CENTRAL", "pop": 95930, "gr": 18.4, "pk": 30.8, "ur": 39.6, "wa": 11.2, "gub": 0.108, "lgs": 55.4}, "SELETAR": {"name": "Seletar", "region": "NORTH-EAST", "pop": 300, "gr": 14.8, "pk": 50.4, "ur": 25.9, "wa": 8.9, "gub": 0.431, "lgs": 71.6}, "SEMBAWANG": {"name": "Sembawang", "region": "NORTH", "pop": 102640, "gr": 24.0, "pk": 28.9, "ur": 40.7, "wa": 6.4, "gub": 0.13, "lgs": 56.5}, "SENGKANG": {"name": "Sengkang", "region": "NORTH-EAST", "pop": 249370, "gr": 29.4, "pk": 34.5, "ur": 32.9, "wa": 3.2, "gub": 0.32, "lgs": 66.0}, "SERANGOON": {"name": "Serangoon", "region": "NORTH-EAST", "pop": 116900, "gr": 27.8, "pk": 15.4, "ur": 53.7, "wa": 3.2, "gub": -0.108, "lgs": 44.6}, "KALLANG": {"name": "Kallang", "region": "CENTRAL", "pop": 101290, "gr": 24.6, "pk": 22.4, "ur": 40.7, "wa": 12.3, "gub": 0.072, "lgs": 53.6}, "LIM CHU KANG": {"name": "Lim Chu Kang", "region": "NORTH", "pop": 110, "gr": 11.7, "pk": 69.4, "ur": 8.8, "wa": 10.1, "gub": 0.804, "lgs": 90.2}, "NORTH-EASTERN ISLANDS": {"name": "North-Eastern Islands", "region": "NORTH-EAST", "pop": 50, "gr": 8.6, "pk": 53.3, "ur": 15.4, "wa": 22.6, "gub": 0.602, "lgs": 80.0}, "NOVENA": {"name": "Novena", "region": "CENTRAL", "pop": 49330, "gr": 27.9, "pk": 43.2, "ur": 26.9, "wa": 2.0, "gub": 0.451, "lgs": 72.6}, "SIMPANG": {"name": "Simpang", "region": "NORTH", "pop": null, "gr": 5.6, "pk": 59.3, "ur": 2.8, "wa": 32.3, "gub": 0.917, "lgs": 95.9}, "SOUTHERN ISLANDS": {"name": "Southern Islands", "region": "CENTRAL", "pop": 1940, "gr": 15.9, "pk": 52.3, "ur": 14.5, "wa": 17.2, "gub": 0.649, "lgs": 82.4}, "SUNGEI KADUT": {"name": "Sungei Kadut", "region": "NORTH", "pop": 750, "gr": 15.5, "pk": 46.7, "ur": 23.2, "wa": 14.6, "gub": 0.457, "lgs": 72.8}, "TOA PAYOH": {"name": "Toa Payoh", "region": "CENTRAL", "pop": 121850, "gr": 29.4, "pk": 24.1, "ur": 43.8, "wa": 2.6, "gub": 0.1, "lgs": 54.9}, "TUAS": {"name": "Tuas", "region": "WEST", "pop": 70, "gr": 11.6, "pk": 19.1, "ur": 43.3, "wa": 25.9, "gub": -0.17, "lgs": 41.4}, "WESTERN ISLANDS": {"name": "Western Islands", "region": "WEST", "pop": 10, "gr": 11.6, "pk": 33.7, "ur": 35.3, "wa": 19.4, "gub": 0.124, "lgs": 56.2}, "WESTERN WATER CATCHMENT": {"name": "Western Water Catchment", "region": "WEST", "pop": 640, "gr": 11.4, "pk": 65.7, "ur": 10.9, "wa": 12.0, "gub": 0.752, "lgs": 87.6}, "WOODLANDS": {"name": "Woodlands", "region": "NORTH", "pop": 255130, "gr": 30.2, "pk": 26.2, "ur": 39.5, "wa": 4.2, "gub": 0.176, "lgs": 58.9}, "RIVER VALLEY": {"name": "River Valley", "region": "CENTRAL", "pop": 10070, "gr": 36.3, "pk": 29.6, "ur": 33.0, "wa": 1.1, "gub": 0.333, "lgs": 66.6}, "ROCHOR": {"name": "Rochor", "region": "CENTRAL", "pop": 13120, "gr": 17.7, "pk": 9.1, "ur": 66.1, "wa": 7.2, "gub": -0.423, "lgs": 28.9}, "SINGAPORE RIVER": {"name": "Singapore River", "region": "CENTRAL", "pop": 3260, "gr": 21.9, "pk": 11.7, "ur": 51.0, "wa": 15.4, "gub": -0.206, "lgs": 39.7}, "STRAITS VIEW": {"name": "Straits View", "region": "CENTRAL", "pop": null, "gr": 10.8, "pk": 50.9, "ur": 9.3, "wa": 29.0, "gub": 0.738, "lgs": 86.9}, "CHANGI BAY": {"name": "Changi Bay", "region": "EAST", "pop": null, "gr": 19.2, "pk": 51.8, "ur": 23.6, "wa": 5.5, "gub": 0.501, "lgs": 75.1}, "MARINE PARADE": {"name": "Marine Parade", "region": "CENTRAL", "pop": 46220, "gr": 23.7, "pk": 37.0, "ur": 37.0, "wa": 2.3, "gub": 0.243, "lgs": 62.1}, "DOWNTOWN CORE": {"name": "Downtown Core", "region": "CENTRAL", "pop": 3190, "gr": 16.2, "pk": 12.7, "ur": 45.3, "wa": 25.8, "gub": -0.221, "lgs": 38.9}, "MARINA EAST": {"name": "Marina East", "region": "CENTRAL", "pop": null, "gr": 8.8, "pk": 51.9, "ur": 16.8, "wa": 22.4, "gub": 0.566, "lgs": 78.2}, "MARINA SOUTH": {"name": "Marina South", "region": "CENTRAL", "pop": null, "gr": 16.2, "pk": 54.9, "ur": 9.6, "wa": 19.3, "gub": 0.762, "lgs": 88.1}, "MUSEUM": {"name": "Museum", "region": "CENTRAL", "pop": 510, "gr": 22.1, "pk": 41.9, "ur": 33.2, "wa": 2.7, "gub": 0.317, "lgs": 65.8}, "NEWTON": {"name": "Newton", "region": "CENTRAL", "pop": 8260, "gr": 28.3, "pk": 47.1, "ur": 23.8, "wa": 0.9, "gub": 0.52, "lgs": 76.1}, "ORCHARD": {"name": "Orchard", "region": "CENTRAL", "pop": 920, "gr": 24.1, "pk": 14.6, "ur": 51.5, "wa": 9.7, "gub": -0.142, "lgs": 42.9}, "OUTRAM": {"name": "Outram", "region": "CENTRAL", "pop": 18340, "gr": 16.6, "pk": 26.4, "ur": 51.3, "wa": 5.7, "gub": -0.088, "lgs": 45.6}, "TAMPINES": {"name": "Tampines", "region": "EAST", "pop": 259900, "gr": 25.2, "pk": 32.1, "ur": 37.8, "wa": 4.9, "gub": 0.205, "lgs": 60.3}, "TANGLIN": {"name": "Tanglin", "region": "CENTRAL", "pop": 21810, "gr": 31.6, "pk": 50.0, "ur": 17.9, "wa": 0.4, "gub": 0.64, "lgs": 81.9}, "TENGAH": {"name": "Tengah", "region": "WEST", "pop": 10, "gr": 12.5, "pk": 49.6, "ur": 28.6, "wa": 9.2, "gub": 0.369, "lgs": 68.4}, "MANDAI": {"name": "Mandai", "region": "NORTH", "pop": 2090, "gr": 10.4, "pk": 79.9, "ur": 9.1, "wa": 0.6, "gub": 0.817, "lgs": 90.8}, "BISHAN": {"name": "Bishan", "region": "CENTRAL", "pop": 87320, "gr": 24.7, "pk": 30.4, "ur": 41.7, "wa": 3.1, "gub": 0.138, "lgs": 56.9}, "ANG MO KIO": {"name": "Ang Mo Kio", "region": "CENTRAL", "pop": 162280, "gr": 25.3, "pk": 38.7, "ur": 33.3, "wa": 2.6, "gub": 0.316, "lgs": 65.7}, "GEYLANG": {"name": "Geylang", "region": "CENTRAL", "pop": 110110, "gr": 27.1, "pk": 16.7, "ur": 52.4, "wa": 3.7, "gub": -0.089, "lgs": 45.5}, "PAYA LEBAR": {"name": "Paya Lebar", "region": "EAST", "pop": 40, "gr": 14.1, "pk": 58.3, "ur": 21.4, "wa": 6.1, "gub": 0.544, "lgs": 77.1}, "YISHUN": {"name": "Yishun", "region": "NORTH", "pop": 221610, "gr": 19.9, "pk": 37.1, "ur": 25.8, "wa": 17.2, "gub": 0.377, "lgs": 68.8}};
+          var panel = document.getElementById('stats-panel');
 
-          function row(label, val) {
-            return '<div class="sp-row"><span class="sp-label">' + label +
-                   '</span><span class="sp-val">' + val + '</span></div>';
+          function row(l,v) {
+            return '<div class="sp-row"><span class="sp-label">'+l+'</span><span class="sp-val">'+v+'</span></div>';
           }
-          function fmtPop(v) {
-            return (v && v > 0) ? Number(v).toLocaleString() : 'n/a';
-          }
+          function fmtPop(v) { return (v&&v>0)?Number(v).toLocaleString():'n/a'; }
           function fmtGub(v) {
-            if (v === null || v === undefined) return 'n/a';
-            return (v >= 0 ? '+' : '') + v.toFixed(3);
+            if (v===null||v===undefined) return 'n/a';
+            return (v>=0?'+':'')+parseFloat(v).toFixed(3);
           }
-          function fmtN(v, dp, sfx) {
-            return (v !== null && v !== undefined) ? v.toFixed(dp) + sfx : 'n/a';
+          function fmtN(v,dp,s) {
+            return (v!==null&&v!==undefined)?parseFloat(v).toFixed(dp)+s:'n/a';
           }
-
           function updatePanel(d) {
+            if (!d || !panel) return;
             panel.innerHTML =
-              '<div class="sp-title">'  + d.name   + '</div>' +
-              '<div class="sp-region">' + d.region + ' Region</div>' +
-              '<div class="sp-section">Population</div>' +
-              row('Residents', fmtPop(d.pop)) +
-              '<hr class="sp-divider">' +
-              '<div class="sp-section">Land cover</div>' +
-              row('Green res.', fmtN(d.gr,  1, '%')) +
-              row('Parkland',   fmtN(d.pk,  1, '%')) +
-              row('Urban',      fmtN(d.ur,  1, '%')) +
-              row('Water',      fmtN(d.wa,  1, '%')) +
-              '<hr class="sp-divider">' +
-              '<div class="sp-section">Green metrics</div>' +
-              row('GUB', fmtGub(d.gub)) +
-              row('LGS', fmtN(d.lgs, 1, '%'));
+              '<div class="sp-title">'+(d.name||'')+'</div>'+
+              '<div class="sp-region">'+(d.region||'')+' Region</div>'+
+              '<div class="sp-section">Population</div>'+
+              row('Residents', fmtPop(d.pop))+
+              '<hr class="sp-divider">'+
+              '<div class="sp-section">Land cover</div>'+
+              row('Green res.', fmtN(d.gr,1,'%'))+
+              row('Parkland',   fmtN(d.pk,1,'%'))+
+              row('Urban',      fmtN(d.ur,1,'%'))+
+              row('Water',      fmtN(d.wa,1,'%'))+
+              '<hr class="sp-divider">'+
+              '<div class="sp-section">Green metrics</div>'+
+              row('GUB', fmtGub(d.gub))+
+              row('LGS', fmtN(d.lgs,1,'%'));
           }
 
-          // Wire click + mouseover on every .leaflet-interactive path.
-          // Each SVG path carries a data-* attribute set by Leaflet with the
-          // layer ID; we read the feature name from the tooltip title instead,
-          // but more reliably: we attach to the path's parent <g> title element.
-          // Simplest reliable method: intercept mousemove on the map pane and
-          // read the currently-highlighted feature name from the tooltip.
-          function attachHandlers() {
-            var paths = document.querySelectorAll('.leaflet-interactive');
-            if (paths.length === 0) return false;
-            paths.forEach(function(path) {
-              ['click','mouseover'].forEach(function(evt) {
-                path.addEventListener(evt, function() {
-                  // Get name from tooltip which is already visible on hover,
-                  // or from the title attribute on the path's parent
-                  var tt = document.querySelector('.leaflet-tooltip');
-                  var name = null;
-                  if (tt) {
-                    var rows = tt.querySelectorAll('tr');
-                    rows.forEach(function(r) {
-                      var cells = r.querySelectorAll('th,td');
-                      if (cells.length >= 2 && cells[0].textContent.trim() === 'Area') {
-                        name = cells[1].textContent.trim().toUpperCase();
-                      }
-                    });
-                  }
-                  // Fallback: try title element on path or parent
-                  if (!name) {
-                    var titleEl = path.querySelector('title') ||
-                                  (path.parentElement && path.parentElement.querySelector('title'));
-                    if (titleEl) name = titleEl.textContent.trim().toUpperCase();
-                  }
-                  if (name && DATA[name]) updatePanel(DATA[name]);
-                });
-              });
+          function handleFeature(e) {
+            var props = e.target && e.target.feature && e.target.feature.properties;
+            if (!props) return;
+            var key = (props.PLN_AREA_N || props.name || '').toString().toUpperCase();
+            if (DATA[key]) updatePanel(DATA[key]);
+          }
+
+          function attachToAllLayers() {
+            var found = 0;
+            Object.keys(window).forEach(function(k) {
+              try {
+                var obj = window[k];
+                if (obj && typeof obj === 'object' && typeof obj.eachLayer === 'function') {
+                  obj.eachLayer(function(layer) {
+                    if (layer.feature && layer.feature.properties) {
+                      layer.off('click mouseover', handleFeature);
+                      layer.on('click mouseover', handleFeature);
+                      found++;
+                    }
+                  });
+                }
+              } catch(e) {}
             });
-            return true;
+            return found;
           }
 
-          var _att = 0;
+          var attempts = 0;
           function tryAttach() {
-            if (attachHandlers()) return;
-            if (_att++ < 30) setTimeout(tryAttach, 200);
+            var n = attachToAllLayers();
+            if (n > 0) return;
+            if (attempts++ < 40) setTimeout(tryAttach, 250);
           }
           tryAttach();
-
-          // Also watch for tooltip appearing (hover) as an additional trigger
-          var obs2 = new MutationObserver(function() {
-            var tt = document.querySelector('.leaflet-tooltip');
-            if (!tt) return;
-            var trs = tt.querySelectorAll('tr');
-            var name = null;
-            trs.forEach(function(r) {
-              var cells = r.querySelectorAll('th,td');
-              if (cells.length >= 2 && cells[0].textContent.trim() === 'Area') {
-                name = cells[1].textContent.trim().toUpperCase();
-              }
-            });
-            if (name && DATA[name]) updatePanel(DATA[name]);
-          });
-          obs2.observe(document.body, {
-            childList: true, subtree: true, characterData: true
-          });
-
-          // Tooltip clamp
-          var pad = 16;
-          function clamp(tt) {
-            if (!tt || !tt.offsetWidth) return;
-            var r = tt.getBoundingClientRect();
-            var vW = document.documentElement.clientWidth;
-            var vH = document.documentElement.clientHeight;
-            var dx = 0, dy = 0;
-            if (r.right  > vW - pad) dx = vW - pad - r.right;
-            if (r.bottom > vH - pad) dy = vH - pad - r.bottom;
-            if (r.left + dx < pad)   dx = pad - r.left;
-            if (r.top  + dy < pad)   dy = pad - r.top;
-            if (dx === 0 && dy === 0) return;
-            var cur = tt.style.transform || "";
-            var parts = cur.match(/translate3d[(](-?[0-9.]+)px,[^-0-9]*(-?[0-9.]+)px/);
-            if (parts) {
-              tt.style.transform = "translate3d(" + (parseFloat(parts[1])+dx) +
-                                   "px," + (parseFloat(parts[2])+dy) + "px,0px)";
-            }
-          }
-          var obs = new MutationObserver(function(muts) {
-            muts.forEach(function(mu) {
-              mu.addedNodes.forEach(function(n) {
-                if (n.classList && n.classList.contains("leaflet-tooltip"))
-                  setTimeout(function(){clamp(n);}, 0);
-              });
-              if (mu.type === "attributes" && mu.target.classList &&
-                  mu.target.classList.contains("leaflet-tooltip"))
-                setTimeout(function(){clamp(mu.target);}, 0);
-            });
-          });
-          obs.observe(document.body, {
-            childList: true, subtree: true,
-            attributes: true, attributeFilter: ["style"]
-          });
         })();
         </script>
-        """))
+        """
+        m.get_root().html.add_child(folium.Element(_on_each))
     else:
         st.info("No shapefile found. Place your planning area .geojson in the app folder.")
 
