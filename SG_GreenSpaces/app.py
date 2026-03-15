@@ -388,50 +388,83 @@ if page == "🗺️ Map":
         m.get_root().html.add_child(folium.Element(legend_html))
         folium.LayerControl().add_to(m)
         map_data = st_folium(m, width="100%", height=580,
-                             returned_objects=["last_object_clicked_tooltip"])
+                             returned_objects=["last_object_clicked_tooltip", "last_object_clicked"])
 
     with col_info:
         st.subheader("Planning area stats")
-        clicked = map_data.get("last_object_clicked_tooltip") if map_data else None
 
-        if clicked and "name" in str(clicked):
-            try:
-                area_name = clicked.get("name", "") if isinstance(clicked, dict) else ""
-                row = df[df["name"] == area_name]
-                if not row.empty:
-                    r = row.iloc[0]
-                    st.markdown(f"### {r['name']}")
-                    st.caption(r["region"].title() + " Region")
-                    pop = int(r["pop2020_total"]) if pd.notna(r["pop2020_total"]) else None
-                    st.metric("Population",      f"{pop:,}" if pop else "n/a")
-                    st.metric("% Urban",         f"{r['pct_urban']:.1f}%")
-                    st.metric("% Green (total)", f"{r['pct_green_total']:.1f}%")
-                    st.metric("% Parkland",      f"{r['pct_parkland']:.1f}%")
-                    st.metric("% Water",         f"{r['pct_water']:.1f}%")
-                    fig_mini = go.Figure(go.Bar(
-                        x=[r["pct_green_res"]], y=[""],
-                        orientation="h", name="Green res.", marker_color="#639922",
+        # ── Resolve clicked area from map interaction ──────────────────────
+        # Persist selection in session_state so it survives map pan/zoom reruns
+        if "map_selected_pa" not in st.session_state:
+            st.session_state["map_selected_pa"] = None
+
+        # Check tooltip hover (property dict) and direct click (lat/lng)
+        clicked_tt = map_data.get("last_object_clicked_tooltip") if map_data else None
+        clicked_obj = map_data.get("last_object_clicked") if map_data else None
+
+        if clicked_tt and isinstance(clicked_tt, dict) and "name" in clicked_tt:
+            st.session_state["map_selected_pa"] = clicked_tt["name"]
+        elif clicked_obj and isinstance(clicked_obj, dict):
+            # Spatial point-in-polygon: find which PA contains the clicked lat/lng
+            if gdf is not None and "lat" in clicked_obj and "lng" in clicked_obj:
+                from shapely.geometry import Point
+                pt = Point(clicked_obj["lng"], clicked_obj["lat"])
+                merged_click = gdf.merge(df[["PLN_AREA_N","name"]], on="PLN_AREA_N", how="left")
+                match = merged_click[merged_click.geometry.contains(pt)]
+                if not match.empty:
+                    st.session_state["map_selected_pa"] = match.iloc[0]["name"]
+
+        selected_pa = st.session_state.get("map_selected_pa")
+
+        # ── Clear button ───────────────────────────────────────────────────
+        if selected_pa:
+            if st.button("✕ Clear selection", use_container_width=True):
+                st.session_state["map_selected_pa"] = None
+                st.rerun()
+
+        # ── Render stats ───────────────────────────────────────────────────
+        if selected_pa:
+            row_match = df[df["name"] == selected_pa]
+            if not row_match.empty:
+                r = row_match.iloc[0]
+                st.markdown(f"### {r['name']}")
+                st.caption(r["region"].title() + " Region")
+                st.divider()
+
+                pop = int(r["pop2020_total"]) if pd.notna(r["pop2020_total"]) else None
+                st.metric("Population",      f"{pop:,}" if pop else "n/a")
+                st.metric("GUB score",       f"{r['gub']:+.3f}" if pd.notna(r["gub"]) else "n/a")
+                st.metric("LGS",             f"{r['lgs']:.1f}%" if pd.notna(r["lgs"]) else "n/a")
+                st.divider()
+                st.metric("% Urban",         f"{r['pct_urban']:.1f}%")
+                st.metric("% Green (total)", f"{r['pct_green_total']:.1f}%")
+                st.metric("% Parkland",      f"{r['pct_parkland']:.1f}%")
+                st.metric("% Water",         f"{r['pct_water']:.1f}%")
+                st.divider()
+
+                # Mini stacked land cover bar
+                fig_mini = go.Figure(go.Bar(
+                    x=[r["pct_green_res"]], y=[""],
+                    orientation="h", name="Green res.", marker_color="#639922",
+                ))
+                for key, label, color in [
+                    ("pct_parkland", "Parkland", "#1D9E75"),
+                    ("pct_urban",    "Urban",    "#888780"),
+                    ("pct_water",    "Water",    "#378ADD"),
+                ]:
+                    fig_mini.add_trace(go.Bar(
+                        x=[r[key]], y=[""], orientation="h",
+                        name=label, marker_color=color,
                     ))
-                    for key, label, color in [
-                        ("pct_parkland", "Parkland", "#1D9E75"),
-                        ("pct_urban",    "Urban",    "#888780"),
-                        ("pct_water",    "Water",    "#378ADD"),
-                    ]:
-                        fig_mini.add_trace(go.Bar(
-                            x=[r[key]], y=[""], orientation="h",
-                            name=label, marker_color=color,
-                        ))
-                    fig_mini.update_layout(
-                        barmode="stack", height=60,
-                        margin=dict(l=0, r=0, t=0, b=0),
-                        showlegend=False,
-                        xaxis=dict(range=[0, 100], showticklabels=False),
-                        plot_bgcolor="rgba(0,0,0,0)",
-                        paper_bgcolor="rgba(0,0,0,0)",
-                    )
-                    st.plotly_chart(fig_mini, use_container_width=True)
-            except Exception:
-                pass
+                fig_mini.update_layout(
+                    barmode="stack", height=50,
+                    margin=dict(l=0, r=0, t=0, b=0),
+                    showlegend=False,
+                    xaxis=dict(range=[0, 100], showticklabels=False),
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                )
+                st.plotly_chart(fig_mini, use_container_width=True)
         else:
             st.caption("Click a planning area on the map to see its statistics here.")
             st.divider()
