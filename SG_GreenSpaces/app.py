@@ -229,11 +229,12 @@ if page == "🗺️ Map":
     if bounds is not None:
         map_center = [(bounds.bottom + bounds.top) / 2,
                       (bounds.left  + bounds.right) / 2]
-        max_bounds = [[bounds.bottom - 0.05, bounds.left  - 0.05],
-                      [bounds.top   + 0.05, bounds.right + 0.05]]
+        sw = [bounds.bottom - 0.02, bounds.left  - 0.02]
+        ne = [bounds.top   + 0.02, bounds.right + 0.02]
     else:
         map_center = [1.3521, 103.8198]
-        max_bounds = [[1.15, 103.55], [1.55, 104.15]]
+        sw = [1.18, 103.58]
+        ne = [1.52, 104.10]
 
     m = folium.Map(
         location=map_center,
@@ -243,7 +244,9 @@ if page == "🗺️ Map":
         max_bounds=True,
         tiles=None,
     )
-    m.fit_bounds(max_bounds)
+    # Restrict pan to raster extent without changing initial zoom
+    m.options["maxBounds"] = [sw, ne]
+    m.options["maxBoundsViscosity"] = 1.0
 
     folium.TileLayer(
         tiles="https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png",
