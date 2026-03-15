@@ -258,14 +258,15 @@ if page == "🗺️ Map":
                 padding: 8px 12px !important;
                 color: #fff !important;
                 font-size: 12px !important;
-                max-width: 240px !important;
+                width: 260px !important;
+                max-width: 260px !important;
+                min-width: 260px !important;
                 line-height: 1.6 !important;
-                word-wrap: break-word !important;
               }
               .leaflet-tooltip::before { display: none !important; }
-              .leaflet-tooltip table  { border:none !important; border-collapse:collapse !important; width:100% !important; }
-              .leaflet-tooltip th     { color:#bbb !important; font-weight:400 !important; font-size:11px !important; padding:2px 10px 2px 0 !important; border:none !important; white-space:nowrap !important; text-align:left !important; vertical-align:top !important; }
-              .leaflet-tooltip td     { color:#fff !important; font-weight:600 !important; font-size:12px !important; padding:2px 0 !important; border:none !important; text-align:right !important; white-space:normal !important; word-break:break-word !important; max-width:150px !important; }
+              .leaflet-tooltip table  { border:none !important; border-collapse:collapse !important; width:100% !important; table-layout:fixed !important; }
+              .leaflet-tooltip th     { color:#bbb !important; font-weight:400 !important; font-size:11px !important; padding:2px 8px 2px 0 !important; border:none !important; white-space:nowrap !important; text-align:left !important; vertical-align:middle !important; width:45% !important; }
+              .leaflet-tooltip td     { color:#fff !important; font-weight:600 !important; font-size:12px !important; padding:2px 0 !important; border:none !important; text-align:right !important; white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important; width:55% !important; }
               .leaflet-tooltip tr     { border:none !important; }
             </style>
             <script>
