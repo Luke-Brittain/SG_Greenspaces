@@ -211,11 +211,7 @@ if page == "🗺️ Map":
                 if col in merged.columns:
                     merged[col] = merged[col].fillna(0).round(1)
 
-            # Use onEachFeature JS to build a fully custom tooltip div —
-            # bypasses Leaflet's tooltip wrapper entirely so no box or table borders
-            geojson_data = merged.to_json()
-
-            custom_geojson = folium.GeoJson(
+            folium.GeoJson(
                 merged.__geo_interface__,
                 name="Planning areas",
                 style_function=lambda f: {
@@ -234,103 +230,25 @@ if page == "🗺️ Map":
 
             # Custom floating tooltip via injected JS — no Leaflet tooltip wrapper
             m.get_root().html.add_child(folium.Element("""
-            <div id="custom-tt" style="
-                display:none;
-                position:fixed;
-                z-index:9999;
-                background:rgba(15,15,15,0.88);
-                color:#ffffff;
-                font-family:sans-serif;
-                font-size:13px;
-                padding:10px 14px;
-                border-radius:8px;
-                box-shadow:0 4px 16px rgba(0,0,0,0.5);
-                pointer-events:none;
-                line-height:1.7;
-                min-width:180px;
-            "></div>
             <script>
-            document.addEventListener("DOMContentLoaded", function() {
-                var tt = document.getElementById("custom-tt");
-
-                function showTT(e, props) {
-                    var pop = props.pop2020_total
-                        ? Number(props.pop2020_total).toLocaleString()
-                        : "n/a";
-                    tt.innerHTML =
-                        "<div style=\"font-size:14px;font-weight:600;margin-bottom:6px;\">"
-                        + (props.name || props.PLN_AREA_N || "") + "</div>"
-                        + "<div style=\"color:#aaa;font-size:11px;margin-bottom:8px;\">"
-                        + (props.region || "") + " Region</div>"
-                        + row("Population", pop)
-                        + row("% Urban",    fmt(props.pct_urban))
-                        + row("% Green",    fmt(props.pct_green_total))
-                        + row("% Parkland", fmt(props.pct_parkland))
-                        + row("% Water",    fmt(props.pct_water));
-                    tt.style.display = "block";
-                    moveTT(e);
-                }
-
-                function row(label, val) {
-                    return "<div style=\"display:flex;justify-content:space-between;gap:24px;\">"
-                        + "<span style=\"color:#ccc;\">" + label + "</span>"
-                        + "<span style=\"font-weight:500;\">" + val + "</span></div>";
-                }
-
-                function fmt(v) {
-                    return (v !== null && v !== undefined) ? v + "%" : "n/a";
-                }
-
-                function moveTT(e) {
-                    var x = e.originalEvent ? e.originalEvent.clientX : e.clientX;
-                    var y = e.originalEvent ? e.originalEvent.clientY : e.clientY;
-                    var pad = 12;
-                    var ttW = tt.offsetWidth  || 260;
-                    var ttH = tt.offsetHeight || 180;
-                    var vW  = window.innerWidth;
-                    var vH  = window.innerHeight;
-                    // Flip left if too close to right edge
-                    var left = (x + 16 + ttW + pad > vW) ? (x - ttW - 16) : (x + 16);
-                    // Flip up if too close to bottom edge
-                    var top  = (y + ttH + pad > vH)      ? (y - ttH - 10) : (y - 10);
-                    // Clamp to viewport
-                    left = Math.max(pad, Math.min(left, vW - ttW - pad));
-                    top  = Math.max(pad, Math.min(top,  vH - ttH - pad));
-                    tt.style.left = left + "px";
-                    tt.style.top  = top  + "px";
-                }
-
-                function hideTT() { tt.style.display = "none"; }
-
-                // Attach to each GeoJSON layer after map renders
-                setTimeout(function() {
-                    document.querySelectorAll(".leaflet-interactive").forEach(function(el) {
-                        el.addEventListener("mouseover", function(e) {
-                            el.style.fillOpacity = "0.15";
-                            el.style.strokeWidth = "2";
-                        });
-                        el.addEventListener("mouseout", function(e) {
-                            el.style.fillOpacity = "0";
-                            el.style.strokeWidth = "1";
-                            hideTT();
-                        });
-                        el.addEventListener("mousemove", function(e) {
-                            moveTT(e);
-                        });
-                    });
-                }, 1500);
+            // Reposition Leaflet tooltip to stay within viewport on every mousemove
+            document.addEventListener("mousemove", function(e) {
+                var tt = document.querySelector(".leaflet-tooltip");
+                if (!tt || tt.style.display === "none") return;
+                var pad = 12;
+                var ttW = tt.offsetWidth  || 260;
+                var ttH = tt.offsetHeight || 200;
+                var vW  = window.innerWidth;
+                var vH  = window.innerHeight;
+                var x   = e.clientX;
+                var y   = e.clientY;
+                var left = (x + 16 + ttW + pad > vW) ? (x - ttW - 16) : (x + 16);
+                var top  = (y + ttH + pad > vH)      ? (y - ttH - 10) : (y - 10);
+                left = Math.max(pad, Math.min(left, vW - ttW - pad));
+                top  = Math.max(pad, Math.min(top,  vH - ttH - pad));
+                tt.style.left = left + "px";
+                tt.style.top  = top  + "px";
             });
-            </script>
-            """))
-
-            # onEachFeature to wire up the custom tooltip per feature with correct props
-            custom_geojson.add_child(folium.Element("""
-            <script>
-            (function waitForLayer() {
-                var layers = [];
-                document.querySelectorAll(".leaflet-interactive").forEach(function(p){ layers.push(p); });
-                if (layers.length === 0) { setTimeout(waitForLayer, 300); return; }
-            })();
             </script>
             """))
 
