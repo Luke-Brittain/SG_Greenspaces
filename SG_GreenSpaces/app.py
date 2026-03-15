@@ -88,10 +88,10 @@ function scrollToTop() {
   p.documentElement.scrollTop = 0;
   p.body.scrollTop = 0;
 }
-// Run immediately, then again after short delays to catch late renders
-scrollToTop();
-setTimeout(scrollToTop, 100);
-setTimeout(scrollToTop, 300);
+// Fire at increasing intervals to reliably catch Streamlit's async render
+[0, 50, 150, 300, 600, 1000].forEach(function(ms) {
+  setTimeout(scrollToTop, ms);
+});
 </script>""", height=0)
 
 # ── Data loading ───────────────────────────────────────────────────────────────
