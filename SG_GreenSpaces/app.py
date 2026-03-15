@@ -221,256 +221,266 @@ if show_residential_only:
 # ══════════════════════════════════════════════════════════════════════════════
 if page == "🗺️ Map":
     st.title("Land cover map")
-    st.caption("Classified land cover overlaid with planning area boundaries. Click a polygon for stats.")
+    st.caption("Classified land cover overlaid with planning area boundaries. Hover a polygon to see stats in the panel top-right.")
 
-    col_map, col_info = st.columns([3, 1])
+    # ── Session state for selected PA ──────────────────────────────────────
+    if "map_selected_pa" not in st.session_state:
+        st.session_state["map_selected_pa"] = None
 
-    with col_map:
-        rgba, bounds = load_raster_preview()
+    rgba, bounds = load_raster_preview()
 
-        m = folium.Map(
-            location=[1.3521, 103.8198],
-            zoom_start=11,
-            tiles=None,
+    m = folium.Map(location=[1.3521, 103.8198], zoom_start=11, tiles=None)
+
+    folium.TileLayer(
+        tiles="https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png",
+        attr="CartoDB", name="Base", show=True,
+    ).add_to(m)
+
+    if rgba is not None:
+        lc_img = Image.fromarray(rgba, mode="RGBA")
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+            lc_img.save(tmp.name)
+            folium.raster_layers.ImageOverlay(
+                image=tmp.name,
+                bounds=[[bounds.bottom, bounds.left], [bounds.top, bounds.right]],
+                opacity=0.75, name="Classified land cover", zindex=2,
+            ).add_to(m)
+    else:
+        st.info("No classified raster found. Place your GeoTIFF in the app folder.")
+
+    if gdf is not None:
+        merged = gdf.merge(
+            df[["PLN_AREA_N", "name", "region", "pct_urban", "pct_green_total",
+                "pct_parkland", "pct_green_res", "pct_water", "pop2020_total",
+                "gub", "lgs"]],
+            on="PLN_AREA_N", how="left",
         )
+        for col in ["pct_urban", "pct_green_total", "pct_parkland",
+                    "pct_green_res", "pct_water", "pop2020_total", "gub", "lgs"]:
+            if col in merged.columns:
+                merged[col] = merged[col].fillna(0).round(3)
 
-        folium.TileLayer(
-            tiles="https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png",
-            attr="CartoDB", name="Base", show=True,
+        folium.GeoJson(
+            merged.__geo_interface__,
+            name="Planning areas",
+            style_function=lambda f: {
+                "fillColor": "transparent", "color": "#ffffff",
+                "weight": 1.0, "fillOpacity": 0,
+            },
+            highlight_function=lambda f: {
+                "fillColor": "#ffffff", "fillOpacity": 0.15,
+                "weight": 2.0, "color": "#ffffff",
+            },
+            tooltip=folium.GeoJsonTooltip(
+                fields=["name", "region", "pop2020_total",
+                        "pct_urban", "pct_green_total", "pct_parkland", "pct_water"],
+                aliases=["Area", "Region", "Population",
+                         "% Urban", "% Green", "% Parkland", "% Water"],
+                localize=True, sticky=True,
+                style=(
+                    "background-color:rgba(15,15,15,0.88);color:#fff;"
+                    "font-family:sans-serif;font-size:12px;padding:8px 12px;"
+                    "border-radius:8px;border:none;max-width:240px;"
+                    "line-height:1.6;word-wrap:break-word;"
+                ),
+            ),
         ).add_to(m)
 
-        # Classified raster overlay
-        if rgba is not None:
-            lc_img = Image.fromarray(rgba, mode="RGBA")
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-                lc_img.save(tmp.name)
-                folium.raster_layers.ImageOverlay(
-                    image=tmp.name,
-                    bounds=[[bounds.bottom, bounds.left], [bounds.top, bounds.right]],
-                    opacity=0.75,
-                    name="Classified land cover",
-                    zindex=2,
-                ).add_to(m)
-        else:
-            st.info("No classified raster found. Place your GeoTIFF in the app folder.")
+        m.get_root().html.add_child(folium.Element("""
+        <style>
+          #stats-panel {
+            position:fixed; top:80px; right:20px; z-index:9999;
+            background:rgba(15,15,15,0.9); color:#fff;
+            padding:14px 16px; border-radius:10px;
+            font-family:sans-serif; font-size:12px; line-height:1.7;
+            min-width:200px; max-width:220px;
+            box-shadow:0 4px 20px rgba(0,0,0,0.6);
+            pointer-events:none;
+          }
+          #stats-panel .sp-title {font-size:14px;font-weight:700;margin-bottom:2px;}
+          #stats-panel .sp-region {font-size:11px;color:#aaa;margin-bottom:10px;}
+          #stats-panel .sp-row {display:flex;justify-content:space-between;padding:3px 0;border-bottom:0.5px solid rgba(255,255,255,0.08);}
+          #stats-panel .sp-row:last-child{border-bottom:none;}
+          #stats-panel .sp-label {color:#bbb;}
+          #stats-panel .sp-val {font-weight:600;color:#fff;}
+          #stats-panel .sp-divider {border:none;border-top:0.5px solid rgba(255,255,255,0.15);margin:8px 0;}
+          #stats-panel .sp-section {font-size:10px;color:#888;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;}
+          .leaflet-tooltip {
+            background: rgba(15,15,15,0.88) !important; border: none !important;
+            border-radius: 8px !important; box-shadow: 0 4px 16px rgba(0,0,0,0.5) !important;
+            padding: 8px 12px !important; color: #fff !important;
+            font-size: 12px !important; width: 260px !important;
+            max-width: 260px !important; min-width: 260px !important;
+            line-height: 1.6 !important;
+          }
+          .leaflet-tooltip::before {display:none !important;}
+          .leaflet-tooltip table  {border:none !important;border-collapse:collapse !important;width:100% !important;table-layout:fixed !important;}
+          .leaflet-tooltip th     {color:#bbb !important;font-weight:400 !important;font-size:11px !important;padding:2px 8px 2px 0 !important;border:none !important;white-space:nowrap !important;text-align:left !important;vertical-align:middle !important;width:45% !important;}
+          .leaflet-tooltip td     {color:#fff !important;font-weight:600 !important;font-size:12px !important;padding:2px 0 !important;border:none !important;text-align:right !important;white-space:nowrap !important;overflow:hidden !important;text-overflow:ellipsis !important;width:55% !important;}
+          .leaflet-tooltip tr     {border:none !important;}
+        </style>
 
-        # Planning area boundaries
-        if gdf is not None:
-            merged = gdf.merge(
-                df[["PLN_AREA_N", "name", "region", "pct_urban", "pct_green_total",
-                    "pct_parkland", "pct_green_res", "pct_water", "pop2020_total"]],
-                on="PLN_AREA_N", how="left",
-            )
-            # Fill NaN so tooltip values display cleanly
-            for col in ["pct_urban", "pct_green_total", "pct_parkland",
-                        "pct_green_res", "pct_water", "pop2020_total"]:
-                if col in merged.columns:
-                    merged[col] = merged[col].fillna(0).round(1)
+        <div id="stats-panel">
+          <div class="sp-title">Singapore overall</div>
+          <div class="sp-region">Hover a planning area to update</div>
+          <div class="sp-section">Land cover (avg)</div>
+          <div class="sp-row"><span class="sp-label">Green res.</span><span class="sp-val">20.6%</span></div>
+          <div class="sp-row"><span class="sp-label">Parkland</span><span class="sp-val">37.1%</span></div>
+          <div class="sp-row"><span class="sp-label">Urban</span><span class="sp-val">32.5%</span></div>
+          <div class="sp-row"><span class="sp-label">Water</span><span class="sp-val">9.7%</span></div>
+          <hr class="sp-divider">
+          <div class="sp-section">Green metrics (avg)</div>
+          <div class="sp-row"><span class="sp-label">GUB</span><span class="sp-val">+0.282</span></div>
+          <div class="sp-row"><span class="sp-label">LGS</span><span class="sp-val">64.1%</span></div>
+        </div>
 
-            folium.GeoJson(
-                merged.__geo_interface__,
-                name="Planning areas",
-                style_function=lambda f: {
-                    "fillColor":   "transparent",
-                    "color":       "#ffffff",
-                    "weight":      1.0,
-                    "fillOpacity": 0,
-                },
-                highlight_function=lambda f: {
-                    "fillColor":   "#ffffff",
-                    "fillOpacity": 0.15,
-                    "weight":      2.0,
-                    "color":       "#ffffff",
-                },
-                tooltip=folium.GeoJsonTooltip(
-                    fields=["name", "region", "pop2020_total",
-                            "pct_urban", "pct_green_total", "pct_parkland", "pct_water"],
-                    aliases=["Area", "Region", "Population",
-                             "% Urban", "% Green", "% Parkland", "% Water"],
-                    localize=True,
-                    sticky=True,
-                    style=(
-                        "background-color:rgba(15,15,15,0.88);"
-                        "color:#fff;"
-                        "font-family:sans-serif;"
-                        "font-size:12px;"
-                        "padding:8px 12px;"
-                        "border-radius:8px;"
-                        "border:none;"
-                        "max-width:240px;"
-                        "line-height:1.6;"
-                        "word-wrap:break-word;"
-                    ),
-                ),
-            ).add_to(m)
-
-            m.get_root().html.add_child(folium.Element("""
-            <style>
-              .leaflet-tooltip {
-                background: rgba(15,15,15,0.88) !important;
-                border: none !important;
-                border-radius: 8px !important;
-                box-shadow: 0 4px 16px rgba(0,0,0,0.5) !important;
-                padding: 8px 12px !important;
-                color: #fff !important;
-                font-size: 12px !important;
-                width: 260px !important;
-                max-width: 260px !important;
-                min-width: 260px !important;
-                line-height: 1.6 !important;
-              }
-              .leaflet-tooltip::before { display: none !important; }
-              .leaflet-tooltip table  { border:none !important; border-collapse:collapse !important; width:100% !important; table-layout:fixed !important; }
-              .leaflet-tooltip th     { color:#bbb !important; font-weight:400 !important; font-size:11px !important; padding:2px 8px 2px 0 !important; border:none !important; white-space:nowrap !important; text-align:left !important; vertical-align:middle !important; width:45% !important; }
-              .leaflet-tooltip td     { color:#fff !important; font-weight:600 !important; font-size:12px !important; padding:2px 0 !important; border:none !important; text-align:right !important; white-space:nowrap !important; overflow:hidden !important; text-overflow:ellipsis !important; width:55% !important; }
-              .leaflet-tooltip tr     { border:none !important; }
-            </style>
-            <script>
-            (function() {
-              var pad = 16;
-              function clamp(tt) {
-                if (!tt || !tt.offsetWidth) return;
-                var r  = tt.getBoundingClientRect();
-                var vW = document.documentElement.clientWidth;
-                var vH = document.documentElement.clientHeight;
-                var dx = 0, dy = 0;
-                if (r.right  > vW - pad) dx = vW - pad - r.right;
-                if (r.bottom > vH - pad) dy = vH - pad - r.bottom;
-                if (r.left + dx < pad)   dx = pad - r.left;
-                if (r.top  + dy < pad)   dy = pad - r.top;
-                if (dx === 0 && dy === 0) return;
-                var cur = tt.style.transform || "";
-                var parts = cur.match(/translate3d[(](-?[0-9.]+)px,[^-0-9]*(-?[0-9.]+)px/);
-                if (parts) {
-                  var nx = parseFloat(parts[1]) + dx;
-                  var ny = parseFloat(parts[2]) + dy;
-                  tt.style.transform = "translate3d(" + nx + "px," + ny + "px,0px)";
-                }
-              }
-              var obs = new MutationObserver(function(muts) {
-                muts.forEach(function(mu) {
-                  mu.addedNodes.forEach(function(n) {
-                    if (n.classList && n.classList.contains("leaflet-tooltip")) {
-                      setTimeout(function(){ clamp(n); }, 0);
-                    }
-                  });
-                  if (mu.type === "attributes" &&
-                      mu.target.classList &&
-                      mu.target.classList.contains("leaflet-tooltip")) {
-                    setTimeout(function(){ clamp(mu.target); }, 0);
-                  }
-                });
-              });
-              document.addEventListener("DOMContentLoaded", function() {
-                obs.observe(document.body, {
-                  childList: true, subtree: true,
-                  attributes: true, attributeFilter: ["style"]
-                });
-              });
-            })();
-            </script>
-            """))
-        else:
-            st.info("No shapefile found. Place your planning area .geojson in the app folder.")
-
-        # Legend
-        legend_html = """
-        <div style='position:fixed;bottom:30px;left:30px;z-index:9999;
-                     background:rgba(0,0,0,0.7);color:#fff;
-                     padding:10px 14px;border-radius:8px;
-                     font-size:12px;line-height:1.8'>
+        <div style="position:fixed;bottom:30px;left:30px;z-index:9999;
+                    background:rgba(0,0,0,0.7);color:#fff;padding:10px 14px;
+                    border-radius:8px;font-size:12px;line-height:1.8">
           <b>Land cover</b><br>
-          <span style='color:#639922'>&#9632;</span> Green residential<br>
-          <span style='color:#1D9E75'>&#9632;</span> Parkland<br>
-          <span style='color:#888780'>&#9632;</span> Urban<br>
-          <span style='color:#378ADD'>&#9632;</span> Water
-        </div>"""
-        m.get_root().html.add_child(folium.Element(legend_html))
-        folium.LayerControl().add_to(m)
-        map_data = st_folium(m, width="100%", height=580,
-                             returned_objects=["last_object_clicked_tooltip", "last_object_clicked"])
+          <span style="color:#639922">&#9632;</span> Green residential<br>
+          <span style="color:#1D9E75">&#9632;</span> Parkland<br>
+          <span style="color:#888780">&#9632;</span> Urban<br>
+          <span style="color:#378ADD">&#9632;</span> Water
+        </div>
 
-    with col_info:
-        st.subheader("Planning area stats")
+        <script>
+        (function() {
+          var panel = document.getElementById('stats-panel');
 
-        # ── Resolve clicked area from map interaction ──────────────────────
-        # Persist selection in session_state so it survives map pan/zoom reruns
-        if "map_selected_pa" not in st.session_state:
-            st.session_state["map_selected_pa"] = None
+          function row(label, val) {
+            return '<div class="sp-row"><span class="sp-label">' + label +
+                   '</span><span class="sp-val">' + val + '</span></div>';
+          }
+          function fmt(v, suffix) {
+            return (v !== null && v !== undefined && v !== '') ? v + suffix : 'n/a';
+          }
+          function fmtPop(v) {
+            return (v && parseFloat(v) > 0) ? Number(parseFloat(v)).toLocaleString() : 'n/a';
+          }
+          function fmtGub(v) {
+            if (v === null || v === undefined || v === '') return 'n/a';
+            var n = parseFloat(v);
+            return (n >= 0 ? '+' : '') + n.toFixed(3);
+          }
+          function fmtLgs(v) {
+            if (v === null || v === undefined || v === '') return 'n/a';
+            return parseFloat(v).toFixed(1) + '%';
+          }
 
-        # Check tooltip hover (property dict) and direct click (lat/lng)
-        clicked_tt = map_data.get("last_object_clicked_tooltip") if map_data else None
-        clicked_obj = map_data.get("last_object_clicked") if map_data else None
+          function updatePanel(props) {
+            panel.innerHTML =
+              '<div class="sp-title">' + (props.name || '') + '</div>' +
+              '<div class="sp-region">' + (props.region || '') + ' Region</div>' +
+              '<div class="sp-section">Population</div>' +
+              row('Residents', fmtPop(props.pop2020_total)) +
+              '<hr class="sp-divider">' +
+              '<div class="sp-section">Land cover</div>' +
+              row('Green res.', fmt(props.pct_green_res, '%')) +
+              row('Parkland',   fmt(props.pct_parkland,  '%')) +
+              row('Urban',      fmt(props.pct_urban,     '%')) +
+              row('Water',      fmt(props.pct_water,     '%')) +
+              '<hr class="sp-divider">' +
+              '<div class="sp-section">Green metrics</div>' +
+              row('GUB', fmtGub(props.gub)) +
+              row('LGS', fmtLgs(props.lgs));
+          }
 
-        if clicked_tt and isinstance(clicked_tt, dict) and "name" in clicked_tt:
-            st.session_state["map_selected_pa"] = clicked_tt["name"]
-        elif clicked_obj and isinstance(clicked_obj, dict):
-            # Spatial point-in-polygon: find which PA contains the clicked lat/lng
-            if gdf is not None and "lat" in clicked_obj and "lng" in clicked_obj:
-                from shapely.geometry import Point
-                pt = Point(clicked_obj["lng"], clicked_obj["lat"])
-                merged_click = gdf.merge(df[["PLN_AREA_N","name"]], on="PLN_AREA_N", how="left")
-                match = merged_click[merged_click.geometry.contains(pt)]
-                if not match.empty:
-                    st.session_state["map_selected_pa"] = match.iloc[0]["name"]
+          // Watch tooltip mutations — parse values and update panel
+          var obs2 = new MutationObserver(function(muts) {
+            muts.forEach(function(mu) {
+              var tt = document.querySelector('.leaflet-tooltip');
+              if (!tt) return;
+              var rows = tt.querySelectorAll('tr');
+              var props = {};
+              rows.forEach(function(r) {
+                var cells = r.querySelectorAll('th, td');
+                if (cells.length < 2) return;
+                var k = cells[0].textContent.trim();
+                var v = cells[1].textContent.trim();
+                if (k === 'Area')       props.name           = v;
+                if (k === 'Region')     props.region         = v;
+                if (k === 'Population') props.pop2020_total  = v.replace(/,/g,'');
+                if (k === '% Urban')    props.pct_urban      = v;
+                if (k === '% Green')    props.pct_green_total= v;
+                if (k === '% Parkland') props.pct_parkland   = v;
+                if (k === '% Water')    props.pct_water      = v;
+              });
+              if (props.name) updatePanel(props);
+            });
+          });
 
-        selected_pa = st.session_state.get("map_selected_pa")
+          document.addEventListener('DOMContentLoaded', function() {
+            obs2.observe(document.body, {
+              childList: true, subtree: true,
+              characterData: true
+            });
+          });
+          // Also start observer immediately in case DOM already loaded
+          obs2.observe(document.body, {
+            childList: true, subtree: true, characterData: true
+          });
 
-        # ── Clear button ───────────────────────────────────────────────────
-        if selected_pa:
-            if st.button("✕ Clear selection", use_container_width=True):
-                st.session_state["map_selected_pa"] = None
-                st.rerun()
+          // Tooltip clamp
+          var pad = 16;
+          function clamp(tt) {
+            if (!tt || !tt.offsetWidth) return;
+            var r = tt.getBoundingClientRect();
+            var vW = document.documentElement.clientWidth;
+            var vH = document.documentElement.clientHeight;
+            var dx = 0, dy = 0;
+            if (r.right  > vW - pad) dx = vW - pad - r.right;
+            if (r.bottom > vH - pad) dy = vH - pad - r.bottom;
+            if (r.left + dx < pad)   dx = pad - r.left;
+            if (r.top  + dy < pad)   dy = pad - r.top;
+            if (dx === 0 && dy === 0) return;
+            var cur = tt.style.transform || "";
+            var parts = cur.match(/translate3d[(](-?[0-9.]+)px,[^-0-9]*(-?[0-9.]+)px/);
+            if (parts) {
+              tt.style.transform = "translate3d(" + (parseFloat(parts[1])+dx) +
+                                   "px," + (parseFloat(parts[2])+dy) + "px,0px)";
+            }
+          }
+          var obs = new MutationObserver(function(muts) {
+            muts.forEach(function(mu) {
+              mu.addedNodes.forEach(function(n) {
+                if (n.classList && n.classList.contains("leaflet-tooltip"))
+                  setTimeout(function(){clamp(n);}, 0);
+              });
+              if (mu.type === "attributes" && mu.target.classList &&
+                  mu.target.classList.contains("leaflet-tooltip"))
+                setTimeout(function(){clamp(mu.target);}, 0);
+            });
+          });
+          obs.observe(document.body, {
+            childList: true, subtree: true,
+            attributes: true, attributeFilter: ["style"]
+          });
+        })();
+        </script>
+        """))
+    else:
+        st.info("No shapefile found. Place your planning area .geojson in the app folder.")
 
-        # ── Render stats ───────────────────────────────────────────────────
-        if selected_pa:
-            row_match = df[df["name"] == selected_pa]
-            if not row_match.empty:
-                r = row_match.iloc[0]
-                st.markdown(f"### {r['name']}")
-                st.caption(r["region"].title() + " Region")
-                st.divider()
+    folium.LayerControl().add_to(m)
+    map_data = st_folium(m, width="100%", height=640,
+                         returned_objects=["last_object_clicked_tooltip",
+                                           "last_object_clicked"])
 
-                pop = int(r["pop2020_total"]) if pd.notna(r["pop2020_total"]) else None
-                st.metric("Population",      f"{pop:,}" if pop else "n/a")
-                st.metric("GUB score",       f"{r['gub']:+.3f}" if pd.notna(r["gub"]) else "n/a")
-                st.metric("LGS",             f"{r['lgs']:.1f}%" if pd.notna(r["lgs"]) else "n/a")
-                st.divider()
-                st.metric("% Urban",         f"{r['pct_urban']:.1f}%")
-                st.metric("% Green (total)", f"{r['pct_green_total']:.1f}%")
-                st.metric("% Parkland",      f"{r['pct_parkland']:.1f}%")
-                st.metric("% Water",         f"{r['pct_water']:.1f}%")
-                st.divider()
+    # Persist selection in session_state
+    clicked_tt  = map_data.get("last_object_clicked_tooltip") if map_data else None
+    clicked_obj = map_data.get("last_object_clicked")         if map_data else None
+    if clicked_tt and isinstance(clicked_tt, dict) and "name" in clicked_tt:
+        st.session_state["map_selected_pa"] = clicked_tt["name"]
+    elif clicked_obj and isinstance(clicked_obj, dict):
+        if gdf is not None and "lat" in clicked_obj and "lng" in clicked_obj:
+            from shapely.geometry import Point
+            pt = Point(clicked_obj["lng"], clicked_obj["lat"])
+            merged_click = gdf.merge(df[["PLN_AREA_N","name"]], on="PLN_AREA_N", how="left")
+            match = merged_click[merged_click.geometry.contains(pt)]
+            if not match.empty:
+                st.session_state["map_selected_pa"] = match.iloc[0]["name"]
 
-                # Mini stacked land cover bar
-                fig_mini = go.Figure(go.Bar(
-                    x=[r["pct_green_res"]], y=[""],
-                    orientation="h", name="Green res.", marker_color="#639922",
-                ))
-                for key, label, color in [
-                    ("pct_parkland", "Parkland", "#1D9E75"),
-                    ("pct_urban",    "Urban",    "#888780"),
-                    ("pct_water",    "Water",    "#378ADD"),
-                ]:
-                    fig_mini.add_trace(go.Bar(
-                        x=[r[key]], y=[""], orientation="h",
-                        name=label, marker_color=color,
-                    ))
-                fig_mini.update_layout(
-                    barmode="stack", height=50,
-                    margin=dict(l=0, r=0, t=0, b=0),
-                    showlegend=False,
-                    xaxis=dict(range=[0, 100], showticklabels=False),
-                    plot_bgcolor="rgba(0,0,0,0)",
-                    paper_bgcolor="rgba(0,0,0,0)",
-                )
-                st.plotly_chart(fig_mini, use_container_width=True)
-        else:
-            st.caption("Click a planning area on the map to see its statistics here.")
-            st.divider()
-            st.markdown("**Singapore overall**")
-            for key, label in LC_LABELS.items():
-                st.metric(label, f"{df[key].mean():.1f}%")
 
 elif page == "🌿 Green vs Urban":
     st.title("Green spaces vs urban cover")
