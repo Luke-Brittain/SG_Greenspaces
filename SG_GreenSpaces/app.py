@@ -92,6 +92,21 @@ def load_csv():
             df[c] = pd.to_numeric(df[c], errors="coerce")
     df["pct_green_total"] = df["pct_green_res"] + df["pct_parkland"]
     df["pct_not_green"]   = df["pct_urban"] + df["pct_water"]
+
+    # ── Composite green metrics ───────────────────────────────────────────────
+    # Green-Urban Balance (GUB): +1 = entirely green, -1 = entirely urban, 0 = equal
+    # Bounded [-1, +1], avoids division instability
+    green  = df["pct_green_total"].fillna(0)
+    urban  = df["pct_urban"].fillna(0)
+    denom_gub = (green + urban).replace(0, np.nan)
+    df["gub"] = ((green - urban) / denom_gub).round(3)
+
+    # Liveability Green Score (LGS): green cover as % of non-water land
+    # Removes water from denominator so coastal/reservoir areas aren't penalised
+    water      = df["pct_water"].fillna(0)
+    non_water  = (100 - water).replace(0, np.nan)
+    df["lgs"]  = ((df["pct_parkland"].fillna(0) + df["pct_green_res"].fillna(0))
+                  / non_water * 100).round(1)
     pop = df["pop2020_total"].replace(0, np.nan)
     df["pct_age_0_14"]   = df["pop2020_0_14"]   / pop * 100
     df["pct_age_15_64"]  = df["pop2020_15_64"]  / pop * 100
@@ -188,7 +203,7 @@ st.sidebar.divider()
 
 page = st.sidebar.radio(
     "Page",
-    ["🗺️ Map", "🌿 Green vs Urban", "📊 Land Cover", "👥 Demographics", "💰 Income", "⚖️ Compare"],
+    ["🗺️ Map", "🌿 Green vs Urban", "📊 Land Cover", "👥 Demographics", "💰 Income", "⚖️ Compare", "🏆 Green Metrics"],
 )
 
 st.sidebar.divider()
@@ -1363,3 +1378,166 @@ elif page == "⚖️ Compare":
                 st.plotly_chart(fig_div, use_container_width=True)
             else:
                 st.caption("Diverging chart requires both areas to have income data.")
+
+
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PAGE 7 — GREEN METRICS
+# ══════════════════════════════════════════════════════════════════════════════
+elif page == "🏆 Green Metrics":
+    st.title("Green metrics")
+    st.caption(
+        "Two composite scores summarising each planning area's green character in a single number. "
+        "Use the sidebar filters to focus on residential areas or specific regions."
+    )
+
+    gdf_m = dff.dropna(subset=["gub", "lgs"]).copy()
+
+    # ── Explainer cards ────────────────────────────────────────────────────────
+    c_ex1, c_ex2 = st.columns(2)
+    with c_ex1:
+        st.markdown("""
+        <div style="background:var(--color-background-secondary,#f5f5f5);
+                    border-radius:8px;padding:14px 16px;margin-bottom:4px">
+          <div style="font-size:14px;font-weight:600;margin-bottom:6px">
+            Green-Urban Balance (GUB)
+          </div>
+          <div style="font-size:13px;color:var(--color-text-secondary,#555);line-height:1.6">
+            <code>(green − urban) / (green + urban)</code><br>
+            Ranges from <strong>−1</strong> (entirely urban) to
+            <strong>+1</strong> (entirely green). Zero means green and urban
+            are equal. Useful for ranking areas on their net green character
+            regardless of size.
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+    with c_ex2:
+        st.markdown("""
+        <div style="background:var(--color-background-secondary,#f5f5f5);
+                    border-radius:8px;padding:14px 16px;margin-bottom:4px">
+          <div style="font-size:14px;font-weight:600;margin-bottom:6px">
+            Liveability Green Score (LGS)
+          </div>
+          <div style="font-size:13px;color:var(--color-text-secondary,#555);line-height:1.6">
+            <code>(parkland + green residential) / (100 − water) × 100</code><br>
+            Green cover as a % of <em>habitable</em> land (water excluded).
+            Ranges <strong>0–100</strong>. Removes the distortion of coastal
+            and reservoir areas having naturally high water percentages.
+          </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.divider()
+
+    # ── Summary scorecards ─────────────────────────────────────────────────────
+    res_only = gdf_m[gdf_m["pop2020_total"] > 1000]
+    top_gub  = res_only.loc[res_only["gub"].idxmax(), "name"]  if not res_only.empty else "n/a"
+    bot_gub  = res_only.loc[res_only["gub"].idxmin(), "name"]  if not res_only.empty else "n/a"
+    top_lgs  = res_only.loc[res_only["lgs"].idxmax(), "name"]  if not res_only.empty else "n/a"
+    avg_gub  = gdf_m["gub"].mean()
+    avg_lgs  = gdf_m["lgs"].mean()
+
+    sc1, sc2, sc3, sc4, sc5 = st.columns(5)
+    for col, lbl, val, clr in [
+        (sc1, "Avg GUB (all)",        f"{avg_gub:+.3f}",  "#639922"),
+        (sc2, "Avg LGS (all)",        f"{avg_lgs:.1f}",   "#1D9E75"),
+        (sc3, "Greenest area (GUB)",  top_gub,             "#639922"),
+        (sc4, "Greenest area (LGS)",  top_lgs,             "#1D9E75"),
+        (sc5, "Most urban (GUB)",     bot_gub,             "#888780"),
+    ]:
+        with col:
+            st.markdown(
+                f"<div style='background:var(--color-background-secondary,#f5f5f5);"
+                f"border-radius:8px;padding:10px 12px;margin-bottom:4px'>"
+                f"<div style='font-size:13px;font-weight:500;"
+                f"color:var(--color-text-secondary,#555);margin-bottom:6px'>{lbl}</div>"
+                f"<div style='font-size:18px;font-weight:700;color:{clr}'>{val}</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+    st.divider()
+
+    # ── GUB ranked bar ─────────────────────────────────────────────────────────
+    st.subheader("Green-Urban Balance — all planning areas")
+    st.caption("+1 = entirely green · −1 = entirely urban · 0 = equal split")
+
+    gub_sorted = gdf_m.sort_values("gub", ascending=True)
+    gub_colors = ["#639922" if v >= 0 else "#888780" for v in gub_sorted["gub"]]
+
+    fig_gub = go.Figure(go.Bar(
+        y=gub_sorted["name"], x=gub_sorted["gub"],
+        orientation="h", marker_color=gub_colors,
+        hovertemplate="%{y}<br>GUB: %{x:+.3f}<extra></extra>",
+    ))
+    fig_gub.add_vline(x=0, line_width=1, line_color="rgba(128,128,128,0.5)")
+    fig_gub.update_layout(
+        height=max(500, len(gub_sorted) * 16),
+        margin=dict(l=10, r=20, t=10, b=30),
+        xaxis=dict(title="GUB score", range=[-1, 1],
+                   tickvals=[-1, -0.5, 0, 0.5, 1]),
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
+    )
+    st.plotly_chart(fig_gub, use_container_width=True)
+
+    st.divider()
+
+    # ── LGS ranked bar ─────────────────────────────────────────────────────────
+    st.subheader("Liveability Green Score — all planning areas")
+    st.caption("% of habitable land that is green (parkland + green residential, water excluded)")
+
+    lgs_sorted = gdf_m.sort_values("lgs", ascending=True)
+    lgs_colors = [
+        "#639922" if v >= 60 else ("#1D9E75" if v >= 40 else "#BA7517")
+        for v in lgs_sorted["lgs"]
+    ]
+
+    fig_lgs = go.Figure(go.Bar(
+        y=lgs_sorted["name"], x=lgs_sorted["lgs"],
+        orientation="h", marker_color=lgs_colors,
+        hovertemplate="%{y}<br>LGS: %{x:.1f}%<extra></extra>",
+    ))
+    fig_lgs.add_vline(x=lgs_sorted["lgs"].mean(), line_width=1,
+                      line_dash="dash", line_color="rgba(128,128,128,0.6)",
+                      annotation_text=f"avg {lgs_sorted['lgs'].mean():.1f}%",
+                      annotation_position="top right",
+                      annotation_font_size=11)
+    fig_lgs.update_layout(
+        height=max(500, len(lgs_sorted) * 16),
+        margin=dict(l=10, r=20, t=10, b=30),
+        xaxis=dict(title="LGS (%)", range=[0, 100]),
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
+    )
+    st.plotly_chart(fig_lgs, use_container_width=True)
+
+    st.divider()
+
+    # ── GUB vs LGS scatter ─────────────────────────────────────────────────────
+    st.subheader("GUB vs LGS — do the two metrics agree?")
+    st.caption("Areas near the diagonal agree across both metrics. "
+               "Outliers reveal where water distorts the LGS.")
+
+    fig_sc = px.scatter(
+        gdf_m.dropna(subset=["gub","lgs","pop2020_total"]),
+        x="gub", y="lgs",
+        size="pop2020_total", color="region",
+        color_discrete_map=REGION_COLORS,
+        hover_name="name",
+        hover_data={"gub":":.3f","lgs":":.1f",
+                    "pct_urban":":.1f","pct_green_total":":.1f",
+                    "pop2020_total":":,"},
+        labels={"gub":"GUB score","lgs":"LGS (%)","region":"Region"},
+        size_max=40,
+    )
+    fig_sc.update_layout(
+        height=440, margin=dict(t=20, b=40),
+        xaxis=dict(range=[-1.05, 1.05],
+                   tickvals=[-1,-0.5,0,0.5,1], zeroline=True,
+                   zerolinecolor="rgba(128,128,128,0.3)"),
+        yaxis=dict(range=[0, 105]),
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+    )
+    st.plotly_chart(fig_sc, use_container_width=True)
