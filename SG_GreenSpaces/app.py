@@ -147,6 +147,45 @@ def load_raster_preview():
             return rgba, bounds
     return None, None
 
+@st.cache_data
+def load_satellite_preview():
+    """Convert the satellite GeoTIFF to an RGBA array for folium overlay."""
+    for path in [
+        BASE_DIR / "SG_coastal_complete_2025",
+        BASE_DIR / "satellite_image.tif",
+        BASE_DIR / "SG_satellite.tif",
+        BASE_DIR / "basemap.tif",
+    ]:
+        if os.path.exists(path):
+            with rasterio.open(path) as src:
+                bounds = src.bounds
+                # Read RGB bands — GEE exports as (bands, height, width)
+                # Handle both single-band and multi-band
+                count = src.count
+                if count >= 3:
+                    r = src.read(1)
+                    g = src.read(2)
+                    b = src.read(3)
+                else:
+                    # Single band — show as greyscale
+                    band = src.read(1)
+                    r = g = b = band
+
+                # Normalise to 0–255 if float or 16-bit
+                def normalise(arr):
+                    arr = arr.astype(float)
+                    mn, mx = np.percentile(arr[arr > 0], (2, 98))
+                    arr = np.clip((arr - mn) / (mx - mn) * 255, 0, 255)
+                    return arr.astype(np.uint8)
+
+                rgba = np.zeros((*r.shape, 4), dtype=np.uint8)
+                rgba[..., 0] = normalise(r)
+                rgba[..., 1] = normalise(g)
+                rgba[..., 2] = normalise(b)
+                rgba[..., 3] = 255  # fully opaque
+
+            return rgba, bounds
+    return None, None
 
 df   = load_csv()
 gdf  = load_shapefile()
@@ -181,12 +220,42 @@ if page == "🗺️ Map":
 
     col_map, col_info = st.columns([3, 1])
 
-    with col_map:
-        m = folium.Map(
-            location=[1.3521, 103.8198],
-            zoom_start=11,
-            tiles="CartoDB positron",
-        )
+sat_rgba, sat_bounds = load_satellite_preview()
+
+# Use blank background if satellite loaded, CartoDB as fallback
+m = folium.Map(
+    location=[1.3521, 103.8198],
+    zoom_start=11,
+    tiles="CartoDB positron" if sat_rgba is None else None,
+)
+
+if sat_rgba is not None:
+    # Add a minimal blank tile layer as base
+    folium.TileLayer(
+        tiles="https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png",
+        attr="CartoDB",
+        name="Base",
+        show=True,
+    ).add_to(m)
+
+    # Satellite image as bottom layer
+    import tempfile
+    from PIL import Image
+    sat_img = Image.fromarray(sat_rgba, mode="RGBA")
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+        sat_img.save(tmp.name)
+        folium.raster_layers.ImageOverlay(
+            image=tmp.name,
+            bounds=[
+                [sat_bounds.bottom, sat_bounds.left],
+                [sat_bounds.top,    sat_bounds.right],
+            ],
+            opacity=1.0,
+            name="Satellite image",
+            zindex=1,
+        ).add_to(m)
+else:
+    st.caption("No satellite image found — using CartoDB basemap.")
 
         # ── Raster overlay ──
         rgba, bounds = load_raster_preview()
