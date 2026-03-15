@@ -147,7 +147,7 @@ st.sidebar.divider()
 
 page = st.sidebar.radio(
     "Page",
-    ["🗺️ Map", "🌿 Green vs Urban", "📊 Land Cover", "👥 Demographics", "💰 Income"],
+    ["🗺️ Map", "🌿 Green vs Urban", "📊 Land Cover", "👥 Demographics", "💰 Income", "⚖️ Compare"],
 )
 
 st.sidebar.divider()
@@ -773,3 +773,265 @@ elif page == "💰 Income":
         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
     )
     st.plotly_chart(fig_sc, use_container_width=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PAGE 6 — COMPARE
+# ══════════════════════════════════════════════════════════════════════════════
+elif page == "⚖️ Compare":
+    st.title("Planning area comparison")
+    st.caption("Select two planning areas to compare across land cover, demographics and income.")
+
+    all_pa = sorted(df["name"].dropna().unique())
+
+    col_a, col_b = st.columns(2)
+    with col_a:
+        pa_a = st.selectbox("Planning area A", all_pa, index=all_pa.index("Bedok") if "Bedok" in all_pa else 0, key="cmp_a")
+    with col_b:
+        pa_b = st.selectbox("Planning area B", all_pa, index=all_pa.index("Tampines") if "Tampines" in all_pa else 1, key="cmp_b")
+
+    ra = df[df["name"] == pa_a].iloc[0]
+    rb = df[df["name"] == pa_b].iloc[0]
+
+    def safe(v, fmt=".1f"):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return 0.0
+
+    # ── Headline metrics ───────────────────────────────────────────────────────
+    st.divider()
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
+    metrics = [
+        ("Population",      "pop2020_total",     None),
+        ("% Urban",         "pct_urban",         "%"),
+        ("% Green (total)", "pct_green_total",   "%"),
+        ("% Parkland",      "pct_parkland",      "%"),
+        ("% Water",         "pct_water",         "%"),
+        ("Aged 65+",        "pct_age_65plus",    "%"),
+    ]
+    for col, (label, field, unit) in zip([c1,c2,c3,c4,c5,c6], metrics):
+        va = ra[field]
+        vb = rb[field]
+        if field == "pop2020_total":
+            sa = f"{int(va):,}" if pd.notna(va) and va > 0 else "n/a"
+            sb = f"{int(vb):,}" if pd.notna(vb) and vb > 0 else "n/a"
+        else:
+            sa = f"{safe(va):.1f}%" if pd.notna(va) else "n/a"
+            sb = f"{safe(vb):.1f}%" if pd.notna(vb) else "n/a"
+        with col:
+            st.markdown(f"""
+            <div style="background:var(--background-secondary,#f5f5f5);border-radius:8px;padding:10px 12px;margin-bottom:4px">
+              <div style="font-size:11px;color:#888;margin-bottom:4px">{label}</div>
+              <div style="font-size:15px;font-weight:600;color:#639922">{sa}</div>
+              <div style="font-size:11px;color:#aaa;margin:2px 0">vs</div>
+              <div style="font-size:15px;font-weight:600;color:#378ADD">{sb}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    st.divider()
+
+    # ── Row 1: Land cover side-by-side + radar ─────────────────────────────────
+    st.subheader("Land cover")
+    cl, cr = st.columns(2)
+
+    with cl:
+        lc_keys    = ["pct_green_res", "pct_parkland", "pct_urban", "pct_water"]
+        lc_labels  = ["Green res.", "Parkland", "Urban", "Water"]
+        lc_colors  = ["#639922", "#1D9E75", "#888780", "#378ADD"]
+
+        fig_lc = go.Figure()
+        fig_lc.add_trace(go.Bar(
+            name=pa_a, x=lc_labels,
+            y=[safe(ra[k]) for k in lc_keys],
+            marker_color="#639922", opacity=0.85,
+        ))
+        fig_lc.add_trace(go.Bar(
+            name=pa_b, x=lc_labels,
+            y=[safe(rb[k]) for k in lc_keys],
+            marker_color="#378ADD", opacity=0.85,
+        ))
+        fig_lc.update_layout(
+            barmode="group", height=300,
+            margin=dict(t=10, b=10, l=0, r=0),
+            yaxis_title="% cover",
+            legend=dict(orientation="h", y=1.08),
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(fig_lc, use_container_width=True)
+
+    with cr:
+        radar_lc = go.Figure()
+        radar_lc.add_trace(go.Scatterpolar(
+            r=[safe(ra[k]) for k in lc_keys] + [safe(ra[lc_keys[0]])],
+            theta=lc_labels + [lc_labels[0]],
+            fill="toself", name=pa_a,
+            line_color="#639922", fillcolor="rgba(99,153,34,0.2)",
+        ))
+        radar_lc.add_trace(go.Scatterpolar(
+            r=[safe(rb[k]) for k in lc_keys] + [safe(rb[lc_keys[0]])],
+            theta=lc_labels + [lc_labels[0]],
+            fill="toself", name=pa_b,
+            line_color="#378ADD", fillcolor="rgba(55,138,221,0.2)",
+        ))
+        radar_lc.update_layout(
+            polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
+            height=300, margin=dict(t=30, b=10, l=30, r=30),
+            legend=dict(orientation="h", y=1.12),
+            paper_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(radar_lc, use_container_width=True)
+
+    # ── Row 2: Demographics side-by-side + radar ───────────────────────────────
+    st.divider()
+    st.subheader("Demographics")
+    cl2, cr2 = st.columns(2)
+
+    age_keys   = ["pct_age_0_14", "pct_age_15_64", "pct_age_65plus"]
+    age_labels = ["Under 15", "15–64", "65+"]
+    age_colors = ["#1D9E75", "#534AB7", "#BA7517"]
+
+    with cl2:
+        fig_age = go.Figure()
+        fig_age.add_trace(go.Bar(
+            name=pa_a, x=age_labels,
+            y=[safe(ra[k]) for k in age_keys],
+            marker_color="#639922", opacity=0.85,
+        ))
+        fig_age.add_trace(go.Bar(
+            name=pa_b, x=age_labels,
+            y=[safe(rb[k]) for k in age_keys],
+            marker_color="#378ADD", opacity=0.85,
+        ))
+        fig_age.update_layout(
+            barmode="group", height=300,
+            margin=dict(t=10, b=10, l=0, r=0),
+            yaxis_title="% of population",
+            legend=dict(orientation="h", y=1.08),
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(fig_age, use_container_width=True)
+
+    with cr2:
+        radar_age = go.Figure()
+        radar_age.add_trace(go.Scatterpolar(
+            r=[safe(ra[k]) for k in age_keys] + [safe(ra[age_keys[0]])],
+            theta=age_labels + [age_labels[0]],
+            fill="toself", name=pa_a,
+            line_color="#639922", fillcolor="rgba(99,153,34,0.2)",
+        ))
+        radar_age.add_trace(go.Scatterpolar(
+            r=[safe(rb[k]) for k in age_keys] + [safe(rb[age_keys[0]])],
+            theta=age_labels + [age_labels[0]],
+            fill="toself", name=pa_b,
+            line_color="#378ADD", fillcolor="rgba(55,138,221,0.2)",
+        ))
+        radar_age.update_layout(
+            polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
+            height=300, margin=dict(t=30, b=10, l=30, r=30),
+            legend=dict(orientation="h", y=1.12),
+            paper_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(radar_age, use_container_width=True)
+
+    # ── Row 3: Income (only if both have data) ─────────────────────────────────
+    st.divider()
+    st.subheader("Income distribution")
+
+    inc_keys   = [k for k, _, _ in INC_BANDS]
+    inc_labels = [l for _, l, _ in INC_BANDS]
+    inc_colors = [c for _, _, c in INC_BANDS]
+
+    has_inc_a = pd.notna(ra["income_total_workers_thousands"])
+    has_inc_b = pd.notna(rb["income_total_workers_thousands"])
+
+    if not has_inc_a and not has_inc_b:
+        st.info("Neither planning area has income data (GHS 2015 covers residential areas only).")
+    else:
+        cl3, cr3 = st.columns(2)
+
+        def income_pcts(row):
+            vals  = [safe(row[k]) for k in inc_keys]
+            total = sum(vals) or 1
+            return [v / total * 100 for v in vals]
+
+        with cl3:
+            fig_inc = go.Figure()
+            if has_inc_a:
+                fig_inc.add_trace(go.Bar(
+                    name=pa_a, x=inc_labels,
+                    y=income_pcts(ra),
+                    marker_color="#639922", opacity=0.85,
+                ))
+            if has_inc_b:
+                fig_inc.add_trace(go.Bar(
+                    name=pa_b, x=inc_labels,
+                    y=income_pcts(rb),
+                    marker_color="#378ADD", opacity=0.85,
+                ))
+            fig_inc.update_layout(
+                barmode="group", height=300,
+                margin=dict(t=10, b=30, l=0, r=0),
+                yaxis_title="% of workers",
+                xaxis_tickangle=-30,
+                legend=dict(orientation="h", y=1.08),
+                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+            )
+            st.plotly_chart(fig_inc, use_container_width=True)
+            if not has_inc_a:
+                st.caption(f"⚠ No income data for {pa_a}")
+            if not has_inc_b:
+                st.caption(f"⚠ No income data for {pa_b}")
+
+        with cr3:
+            radar_inc = go.Figure()
+            if has_inc_a:
+                radar_inc.add_trace(go.Scatterpolar(
+                    r=income_pcts(ra) + [income_pcts(ra)[0]],
+                    theta=inc_labels + [inc_labels[0]],
+                    fill="toself", name=pa_a,
+                    line_color="#639922", fillcolor="rgba(99,153,34,0.2)",
+                ))
+            if has_inc_b:
+                radar_inc.add_trace(go.Scatterpolar(
+                    r=income_pcts(rb) + [income_pcts(rb)[0]],
+                    theta=inc_labels + [inc_labels[0]],
+                    fill="toself", name=pa_b,
+                    line_color="#378ADD", fillcolor="rgba(55,138,221,0.2)",
+                ))
+            radar_inc.update_layout(
+                polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
+                height=300, margin=dict(t=30, b=10, l=30, r=30),
+                legend=dict(orientation="h", y=1.12),
+                paper_bgcolor="rgba(0,0,0,0)",
+            )
+            st.plotly_chart(radar_inc, use_container_width=True)
+
+    # ── Row 4: Population size visual ──────────────────────────────────────────
+    st.divider()
+    st.subheader("Population size")
+
+    pop_a = safe(ra["pop2020_total"])
+    pop_b = safe(rb["pop2020_total"])
+    max_pop = max(pop_a, pop_b, 1)
+
+    fig_pop = go.Figure()
+    fig_pop.add_trace(go.Bar(
+        x=[pop_a], y=[pa_a], orientation="h",
+        marker_color="#639922", name=pa_a,
+        text=[f"{int(pop_a):,}" if pop_a > 0 else "n/a"],
+        textposition="outside",
+    ))
+    fig_pop.add_trace(go.Bar(
+        x=[pop_b], y=[pa_b], orientation="h",
+        marker_color="#378ADD", name=pa_b,
+        text=[f"{int(pop_b):,}" if pop_b > 0 else "n/a"],
+        textposition="outside",
+    ))
+    fig_pop.update_layout(
+        height=160, margin=dict(t=10, b=10, l=10, r=60),
+        xaxis=dict(title="Residents (2020 Census)", range=[0, max_pop * 1.2]),
+        showlegend=False,
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+    )
+    st.plotly_chart(fig_pop, use_container_width=True)
