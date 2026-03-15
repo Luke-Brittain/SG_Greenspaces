@@ -258,7 +258,7 @@ else:
     st.caption("No satellite image found — using CartoDB basemap.")
 
         # ── Raster overlay ──
-        rgba, bounds = load_raster_preview()
+    rgba, bounds = load_raster_preview()
         if rgba is not None:
             import tempfile
             from PIL import Image
