@@ -75,22 +75,23 @@ st.markdown("""
 
 # Scroll to top on every page navigation
 components.html("""<script>
-(function() {
+function scrollToTop() {
   var p = window.parent.document;
-  // Try every plausible Streamlit scroll container
-  var found = [];
   p.querySelectorAll('*').forEach(function(el) {
-    if (el.scrollTop > 0 || el.scrollHeight > el.clientHeight) {
+    try {
       var s = window.parent.getComputedStyle(el);
       if (s.overflowY === 'auto' || s.overflowY === 'scroll') {
         el.scrollTop = 0;
-        found.push(el.tagName + (el.className ? '.' + el.className.split(' ')[0] : ''));
       }
-    }
+    } catch(e) {}
   });
   p.documentElement.scrollTop = 0;
   p.body.scrollTop = 0;
-})();
+}
+// Run immediately, then again after short delays to catch late renders
+scrollToTop();
+setTimeout(scrollToTop, 100);
+setTimeout(scrollToTop, 300);
 </script>""", height=0)
 
 # ── Data loading ───────────────────────────────────────────────────────────────
