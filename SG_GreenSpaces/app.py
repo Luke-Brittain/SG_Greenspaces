@@ -726,7 +726,7 @@ elif page == "👥 Demographics":
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "💰 Income":
     st.title("Income distribution")
-    st.caption("GHS 2015 — residential planning areas only (28 areas have income data)")
+    st.caption("GHS 2015 — residential planning areas only · 28 of 55 areas have income data")
 
     inc_df     = dff.dropna(subset=["income_total_workers_thousands"]).copy()
     inc_keys   = [k for k, _, _ in INC_BANDS]
@@ -734,78 +734,155 @@ elif page == "💰 Income":
     for k, _, _ in INC_BANDS:
         inc_df[f"pct_{k}"] = inc_df[k] / inc_totals * 100
 
-    c1, c2, c3 = st.columns(3)
-    with c1: st.metric("Most high earners",           inc_df.loc[inc_df["income_10000_over"].idxmax(), "name"])
-    with c2: st.metric("Greenest (with income data)", inc_df.loc[inc_df["pct_green_total"].idxmax(), "name"])
-    with c3:
-        corr = inc_df[["pct_green_total", "income_10000_over"]].corr().iloc[0, 1]
-        st.metric("Green vs high income (r)", f"{corr:.2f}")
+    # ── 1. Headline insight scorecards ────────────────────────────────────────
+    st.divider()
+
+    # Modal bracket — the income band with the highest % of workers per area
+    bracket_labels = {k: l for k, l, _ in INC_BANDS}
+    inc_df["modal_bracket"] = inc_df[[f"pct_{k}" for k in inc_keys]].idxmax(axis=1).str.replace("pct_", "")
+    inc_df["modal_label"]   = inc_df["modal_bracket"].map(bracket_labels)
+
+    top_high  = inc_df.loc[inc_df["pct_income_10000_over"].idxmax()]
+    top_low   = inc_df.loc[inc_df["pct_income_below_1000"].idxmax()]
+    top_green = inc_df.loc[inc_df["pct_green_total"].idxmax()]
+    corr_gub  = inc_df[["gub", "pct_income_10000_over"]].corr().iloc[0, 1]
+    corr_lgs  = inc_df[["lgs", "pct_income_10000_over"]].corr().iloc[0, 1]
+
+    sc1, sc2, sc3, sc4, sc5 = st.columns(5)
+    for col, lbl, val, sub, clr in [
+        (sc1, "Highest % $10k+ earners",  top_high["name"],
+              f"{top_high['pct_income_10000_over']:.1f}% of workers", "#534AB7"),
+        (sc2, "Highest % low earners (<$1k)", top_low["name"],
+              f"{top_low['pct_income_below_1000']:.1f}% of workers",  "#E24B4A"),
+        (sc3, "Greenest area (income data)", top_green["name"],
+              f"{top_green['pct_green_total']:.1f}% green cover",     "#639922"),
+        (sc4, "GUB vs $10k+ (r)",  f"{corr_gub:+.2f}",
+              "Positive = greener areas earn more",                    "#1D9E75"),
+        (sc5, "LGS vs $10k+ (r)",  f"{corr_lgs:+.2f}",
+              "Positive = liveable green → higher income",             "#1D9E75"),
+    ]:
+        with col:
+            st.markdown(
+                f"<div style='background:var(--color-background-secondary,#f5f5f5);"
+                f"border-radius:8px;padding:10px 12px;margin-bottom:4px'>"
+                f"<div style='font-size:13px;font-weight:500;"
+                f"color:var(--color-text-secondary,#555);margin-bottom:6px'>{lbl}</div>"
+                f"<div style='font-size:18px;font-weight:700;color:{clr}'>{val}</div>"
+                f"<div style='font-size:11px;color:#888;margin-top:3px'>{sub}</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
 
     st.divider()
 
+    # ── 3. Heatmap — brackets as columns, areas as rows ───────────────────────
+    st.subheader("Income bracket heatmap")
+    st.caption("Colour intensity shows share of workers in each bracket — easier to spot "
+               "which bracket dominates and which areas are outliers.")
+
     sort_inc = st.selectbox(
-        "Sort by",
-        ["% High earners ($10k+)", "% Low earners (<$1k)", "% Urban", "% Green (total)", "Name"],
+        "Sort areas by",
+        ["% High earners ($10k+)", "% Low earners (<$1k)", "% Green (total)", "GUB score", "Name"],
     )
-    sort_inc_map = {
-        "% High earners ($10k+)": "income_10000_over",
-        "% Low earners (<$1k)":   "income_below_1000",
-        "% Urban":                "pct_urban",
-        "% Green (total)":        "pct_green_total",
-        "Name":                   "name",
+    sort_map = {
+        "% High earners ($10k+)": ("pct_income_10000_over", False),
+        "% Low earners (<$1k)":   ("pct_income_below_1000", False),
+        "% Green (total)":        ("pct_green_total",        False),
+        "GUB score":              ("gub",                    False),
+        "Name":                   ("name",                   True),
     }
-    sk         = sort_inc_map[sort_inc]
-    inc_sorted = inc_df.sort_values(sk, ascending=(sk == "name"))
+    sk, sk_asc = sort_map[sort_inc]
+    inc_sorted = inc_df.sort_values(sk, ascending=sk_asc)
 
-    fig = make_subplots(
-        rows=1, cols=2,
-        column_widths=[0.72, 0.28],
-        shared_yaxes=True,
-        subplot_titles=["Income distribution", "Land cover"],
-        horizontal_spacing=0.02,
-    )
-    for k, label, color in INC_BANDS:
-        fig.add_trace(go.Bar(
-            y=inc_sorted["name"], x=inc_sorted[f"pct_{k}"],
-            orientation="h", name=label, marker_color=color,
-            hovertemplate=f"<b>%{{y}}</b><br>{label}: %{{x:.1f}}%<extra></extra>",
-        ), row=1, col=1)
-    for key, label in LC_LABELS.items():
-        fig.add_trace(go.Bar(
-            y=inc_sorted["name"], x=inc_sorted[key],
-            orientation="h", name=label,
-            marker_color=LC_COLORS[key], showlegend=False,
-            hovertemplate=f"<b>%{{y}}</b><br>{label}: %{{x:.1f}}%<extra></extra>",
-        ), row=1, col=2)
-    fig.update_layout(
-        barmode="stack", height=max(500, len(inc_sorted) * 22),
-        margin=dict(l=10, r=10, t=40, b=10),
-        legend=dict(orientation="h", yanchor="bottom", y=1.04, xanchor="left", x=0),
+    # Build heatmap z matrix — rows = areas, cols = brackets
+    hm_labels = [l for _, l, _ in INC_BANDS]
+    hm_z      = inc_sorted[[f"pct_{k}" for k in inc_keys]].values
+    hm_text   = [[f"{v:.1f}%" for v in row] for row in hm_z]
+    hm_colors = ["#E24B4A","#EF9F27","#F9CB42","#97C459","#1D9E75","#378ADD","#534AB7"]
+
+    fig_hm = go.Figure(go.Heatmap(
+        z=hm_z,
+        x=hm_labels,
+        y=inc_sorted["name"].tolist(),
+        text=hm_text,
+        texttemplate="%{text}",
+        textfont=dict(size=9),
+        colorscale=[
+            [0.0,  "rgba(30,30,30,0.05)"],
+            [0.3,  "rgba(83,74,183,0.3)"],
+            [0.7,  "rgba(83,74,183,0.7)"],
+            [1.0,  "rgba(83,74,183,1.0)"],
+        ],
+        showscale=True,
+        colorbar=dict(title="% workers", ticksuffix="%", len=0.5),
+        hovertemplate="<b>%{y}</b><br>%{x}: %{text}<extra></extra>",
+    ))
+    fig_hm.update_layout(
+        height=max(420, len(inc_sorted) * 20),
+        margin=dict(l=10, r=60, t=10, b=40),
+        xaxis=dict(side="top", tickfont=dict(size=11)),
+        yaxis=dict(tickfont=dict(size=10)),
         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
     )
-    fig.update_xaxes(range=[0, 100], row=1, col=1, title_text="% of workers")
-    fig.update_xaxes(range=[0, 100], row=1, col=2, title_text="% cover")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig_hm, use_container_width=True)
 
-    st.subheader("Green space vs high earner share")
-    fig_sc = px.scatter(
-        inc_sorted,
-        x="pct_green_total", y="income_10000_over",
-        size="pop2020_total", color="region",
-        color_discrete_map=REGION_COLORS,
-        hover_name="name",
-        hover_data={"pct_urban": ":.1f", "pct_green_total": ":.1f",
-                    "income_10000_over": ":.1f", "pop2020_total": ":,"},
-        labels={"pct_green_total":   "% Green (total)",
-                "income_10000_over": "Workers earning $10k+ (thousands)",
-                "region":            "Region"},
-        trendline="ols",
+    st.divider()
+
+    # ── 5. Income vs green metrics scatter ────────────────────────────────────
+    st.subheader("Income vs green metrics")
+    st.caption("Each bubble is a planning area, sized by population. "
+               "A positive trend suggests wealthier areas tend to have more — or better-quality — green space.")
+
+    green_metric = st.radio(
+        "Green metric", ["GUB (Green-Urban Balance)", "LGS (Liveability Green Score)",
+                         "% Green (total)"],
+        horizontal=True,
     )
-    fig_sc.update_layout(
-        height=400, margin=dict(t=20, b=40),
-        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+    gm_col = {"GUB (Green-Urban Balance)":    "gub",
+               "LGS (Liveability Green Score)": "lgs",
+               "% Green (total)":              "pct_green_total"}[green_metric]
+    gm_label = {"gub": "GUB score", "lgs": "LGS (%)",
+                 "pct_green_total": "% Green (total)"}[gm_col]
+    gm_fmt   = ":.3f" if gm_col == "gub" else ":.1f"
+
+    inc_scatter = inc_sorted.dropna(subset=[gm_col, "pct_income_10000_over"]).copy()
+    inc_scatter["pct_age_60plus"] = (
+        inc_scatter["pct_age10_60_69"].fillna(0) +
+        inc_scatter["pct_age10_70_79"].fillna(0) +
+        inc_scatter["pct_age10_80plus"].fillna(0)
     )
-    st.plotly_chart(fig_sc, use_container_width=True)
+
+    sc_left, sc_right = st.columns(2)
+    for col, y_col, y_label, y_fmt, title in [
+        (sc_left,  "pct_income_10000_over", "Workers earning $10k+ (%)", ":.1f",
+         "Green space vs high earners"),
+        (sc_right, "pct_income_below_1000", "Workers earning <$1k (%)",  ":.1f",
+         "Green space vs low earners"),
+    ]:
+        with col:
+            fig_sc = px.scatter(
+                inc_scatter,
+                x=gm_col, y=y_col,
+                size="pop2020_total", color="region",
+                color_discrete_map=REGION_COLORS,
+                hover_name="name",
+                hover_data={gm_col: gm_fmt, y_col: ":.1f", "pop2020_total": ":,"},
+                labels={gm_col: gm_label, y_col: y_label, "region": "Region"},
+                trendline="ols",
+                title=title,
+            )
+            r = inc_scatter[[gm_col, y_col]].corr().iloc[0, 1]
+            fig_sc.add_annotation(
+                x=0.97, y=0.05, xref="paper", yref="paper",
+                text=f"r = {r:+.2f}",
+                showarrow=False, font=dict(size=12, color="#888"),
+                xanchor="right",
+            )
+            fig_sc.update_layout(
+                height=360, margin=dict(t=40, b=30),
+                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+            )
+            st.plotly_chart(fig_sc, use_container_width=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
