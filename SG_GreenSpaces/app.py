@@ -794,37 +794,134 @@ elif page == "💰 Income":
     sk, sk_asc = sort_map[sort_inc]
     inc_sorted = inc_df.sort_values(sk, ascending=sk_asc)
 
-    # Build heatmap z matrix — rows = areas, cols = brackets
-    hm_labels = [l for _, l, _ in INC_BANDS]
-    hm_z      = inc_sorted[[f"pct_{k}" for k in inc_keys]].values
-    hm_text   = [[f"{v:.1f}%" for v in row] for row in hm_z]
-    hm_colors = ["#E24B4A","#EF9F27","#F9CB42","#97C459","#1D9E75","#378ADD","#534AB7"]
+    # ── Improvement 1: Diverging scale anchored at column average ─────────────
+    # Compute deviation from Singapore average per bracket
+    hm_labels  = [l for _, l, _ in INC_BANDS]
+    pct_cols   = [f"pct_{k}" for k in inc_keys]
+    sg_avg_row = inc_df[pct_cols].mean()                    # per-bracket SG avg
+    hm_z_raw   = inc_sorted[pct_cols].values                # absolute values
+    hm_z_dev   = (inc_sorted[pct_cols] - sg_avg_row).values # deviation from avg
 
-    fig_hm = go.Figure(go.Heatmap(
-        z=hm_z,
+    # ── Improvement 5: SG average reference row appended at bottom ───────────
+    # Append a synthetic "Singapore avg" row to both matrices
+    avg_label  = "── Singapore avg ──"
+    area_names = inc_sorted["name"].tolist() + [avg_label]
+    hm_z_dev_with_avg = np.vstack([hm_z_dev, np.zeros(len(inc_keys))])
+    hm_z_raw_with_avg = np.vstack([hm_z_raw,  sg_avg_row.values])
+
+    # ── Improvement 6: Only show labels for cells ≥ 5pp from column average ───
+    threshold = 5.0
+    hm_text = []
+    for i, row_dev in enumerate(hm_z_dev_with_avg):
+        row_raw = hm_z_raw_with_avg[i]
+        if i == len(hm_z_dev):          # avg row — always show
+            hm_text.append([f"{v:.1f}%" for v in row_raw])
+        else:
+            hm_text.append([
+                f"{row_raw[j]:.1f}%" if abs(row_dev[j]) >= threshold else ""
+                for j in range(len(inc_keys))
+            ])
+
+    # ── Improvement 2: Modal bracket column ──────────────────────────────────
+    modal_colors = [c for _, _, c in INC_BANDS]
+    modal_map    = {k: c for (k, _, c), pc in zip(INC_BANDS, pct_cols)}
+    bracket_color_map = {k: c for k, _, c in INC_BANDS}
+    inc_sorted["modal_key"] = inc_sorted[pct_cols].idxmax(axis=1).str.replace("pct_", "")
+    modal_vals  = inc_sorted["modal_key"].tolist()
+    # For avg row, find modal bracket of SG avg
+    modal_vals.append(inc_keys[int(np.argmax(sg_avg_row.values))])
+
+    # Diverging colorscale: red = below avg, white = avg, blue/purple = above avg
+    diverging_scale = [
+        [0.0,  "#C0392B"],
+        [0.25, "#E8827A"],
+        [0.5,  "rgba(240,240,240,0.3)"],
+        [0.75, "#7B8FD4"],
+        [1.0,  "#2C3E9E"],
+    ]
+
+    # Symmetric scale range so 0-deviation maps to centre
+    max_dev = max(abs(hm_z_dev_with_avg).max(), 1.0)
+
+    fig_hm = make_subplots(
+        rows=1, cols=2,
+        column_widths=[0.88, 0.12],
+        shared_yaxes=True,
+        horizontal_spacing=0.01,
+        subplot_titles=["Deviation from Singapore average (pp)", "Dominant bracket"],
+    )
+
+    # Main heatmap — deviation from average
+    fig_hm.add_trace(go.Heatmap(
+        z=hm_z_dev_with_avg,
         x=hm_labels,
-        y=inc_sorted["name"].tolist(),
+        y=area_names,
         text=hm_text,
         texttemplate="%{text}",
         textfont=dict(size=9),
-        colorscale=[
-            [0.0,  "rgba(30,30,30,0.05)"],
-            [0.3,  "rgba(83,74,183,0.3)"],
-            [0.7,  "rgba(83,74,183,0.7)"],
-            [1.0,  "rgba(83,74,183,1.0)"],
-        ],
+        colorscale=diverging_scale,
+        zmid=0,
+        zmin=-max_dev, zmax=max_dev,
         showscale=True,
-        colorbar=dict(title="% workers", ticksuffix="%", len=0.5),
-        hovertemplate="<b>%{y}</b><br>%{x}: %{text}<extra></extra>",
-    ))
+        colorbar=dict(
+            title="pp vs avg", ticksuffix="pp",
+            len=0.6, x=0.87,
+            tickvals=[-max_dev, -max_dev/2, 0, max_dev/2, max_dev],
+            ticktext=[f"{-max_dev:.0f}", f"{-max_dev/2:.0f}", "0",
+                      f"{max_dev/2:.0f}", f"{max_dev:.0f}"],
+        ),
+        hovertemplate="<b>%{y}</b><br>%{x}<br>Deviation: %{z:+.1f}pp vs SG avg<extra></extra>",
+    ), row=1, col=1)
+
+    # Separator line above avg row
+    n_areas = len(inc_sorted)
+    fig_hm.add_shape(
+        type="line", xref="x", yref="y",
+        x0=-0.5, x1=len(inc_keys) - 0.5,
+        y0=n_areas - 0.5, y1=n_areas - 0.5,
+        line=dict(color="rgba(255,255,255,0.6)", width=2, dash="dot"),
+        row=1, col=1,
+    )
+
+    # Modal bracket column — coloured cells
+    modal_z     = [[0.5]] * len(area_names)   # uniform z, use colour from marker
+    modal_texts = []
+    modal_hover = []
+    for mv in modal_vals:
+        lbl = bracket_color_map.get(mv, "")
+        # Map bracket key to label
+        lbl_txt = next((l for k, l, _ in INC_BANDS if k == mv), mv)
+        modal_texts.append([lbl_txt])
+        modal_hover.append([lbl_txt])
+
+    # Render as scatter with coloured markers instead of heatmap for exact colours
+    for i, (area, mv) in enumerate(zip(area_names, modal_vals)):
+        clr = bracket_color_map.get(mv, "#888")
+        lbl_txt = next((l for k, l, _ in INC_BANDS if k == mv), mv)
+        fig_hm.add_trace(go.Scatter(
+            x=["Dominant"],
+            y=[area],
+            mode="markers+text",
+            marker=dict(color=clr, size=14, symbol="square"),
+            text=[lbl_txt],
+            textposition="middle right",
+            textfont=dict(size=8),
+            showlegend=False,
+            hovertemplate=f"<b>{area}</b><br>Dominant bracket: {lbl_txt}<extra></extra>",
+        ), row=1, col=2)
+
     fig_hm.update_layout(
-        height=max(420, len(inc_sorted) * 20),
-        margin=dict(l=10, r=60, t=10, b=40),
+        height=max(460, len(area_names) * 20),
+        margin=dict(l=10, r=20, t=40, b=10),
         xaxis=dict(side="top", tickfont=dict(size=11)),
-        yaxis=dict(tickfont=dict(size=10)),
+        xaxis2=dict(side="top", tickfont=dict(size=10)),
+        yaxis=dict(tickfont=dict(size=10), autorange="reversed"),
+        yaxis2=dict(autorange="reversed"),
         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
     )
     st.plotly_chart(fig_hm, use_container_width=True)
+    st.caption("Blue = above Singapore average for that bracket · Red = below average · "
+               "Labels shown only where deviation ≥ 5pp · Dashed line separates Singapore average reference row.")
 
     st.divider()
 
