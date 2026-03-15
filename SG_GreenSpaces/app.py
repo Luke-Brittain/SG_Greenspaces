@@ -284,8 +284,20 @@ if page == "🗺️ Map":
                 function moveTT(e) {
                     var x = e.originalEvent ? e.originalEvent.clientX : e.clientX;
                     var y = e.originalEvent ? e.originalEvent.clientY : e.clientY;
-                    tt.style.left = (x + 16) + "px";
-                    tt.style.top  = (y - 10) + "px";
+                    var pad = 12;
+                    var ttW = tt.offsetWidth  || 260;
+                    var ttH = tt.offsetHeight || 180;
+                    var vW  = window.innerWidth;
+                    var vH  = window.innerHeight;
+                    // Flip left if too close to right edge
+                    var left = (x + 16 + ttW + pad > vW) ? (x - ttW - 16) : (x + 16);
+                    // Flip up if too close to bottom edge
+                    var top  = (y + ttH + pad > vH)      ? (y - ttH - 10) : (y - 10);
+                    // Clamp to viewport
+                    left = Math.max(pad, Math.min(left, vW - ttW - pad));
+                    top  = Math.max(pad, Math.min(top,  vH - ttH - pad));
+                    tt.style.left = left + "px";
+                    tt.style.top  = top  + "px";
                 }
 
                 function hideTT() { tt.style.display = "none"; }
