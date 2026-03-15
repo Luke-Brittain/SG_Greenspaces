@@ -110,10 +110,9 @@ def load_csv():
 
 @st.cache_data
 def load_shapefile():
-    """Try to load the planning area shapefile from common locations."""
     for path in [
-        BASE_DIR / "MasterPlan2019PlanningAreaBoundaryNoSea.shp",
-        BASE_DIR / "MP19_PLNG_AREA_NO_SEA_PL.shp",
+        BASE_DIR / "MasterPlan2019PlanningAreaBoundaryNoSea.geojson",
+        BASE_DIR / "planning_areas.geojson",
         BASE_DIR / "planning_areas.shp",
     ]:
         if os.path.exists(path):
