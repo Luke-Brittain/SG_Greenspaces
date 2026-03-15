@@ -377,7 +377,7 @@ if page == "📖 Introduction":
         "**Classification uncertainty** — the land cover data is produced by an ML model trained on "
         "manually tagged samples. All classifications carry uncertainty, particularly at class boundaries "
         "(e.g. dense street trees may be classified as parkland rather than green residential). "
-        "See the **🔬 Model Assessment** page for accuracy metrics once model evaluation data is available.\n\n"
+        "See the **🔬 Model Assessment** page for full accuracy metrics and known limitations.\n\n"
         "**Income data vintage** — GHS 2015 income data is a decade old. Income distributions have likely "
         "shifted, particularly in areas with significant development since 2015.\n\n"
         "**Census 2020 context** — demographic data reflects the population at the time of the 2020 Census, "
@@ -1996,76 +1996,182 @@ elif page == "🏆 Green Metrics":
 elif page == "🔬 Model Assessment":
     st.title("Model assessment")
     st.caption(
-        "This page documents the accuracy and limitations of the XGBoost land cover classifier "
-        "used to produce all green space data in this dashboard."
+        "Accuracy and limitations of the XGBoost land cover classifier "
+        "used to produce all green space data in this dashboard. "
+        "Evaluated on a held-out test set of 35 labelled samples."
     )
+
+    # ── Overall accuracy scorecards ───────────────────────────────────────────
+    st.divider()
+    ma1, ma2, ma3, ma4 = st.columns(4)
+    for col, lbl, val, sub, clr in [
+        (ma1, "Overall accuracy",  "94.3%",  "33 of 35 samples correct",     "#639922"),
+        (ma2, "Macro avg F1",      "0.94",   "Unweighted mean across classes","#1D9E75"),
+        (ma3, "Weighted avg F1",   "0.94",   "Weighted by class support",     "#534AB7"),
+        (ma4, "Test set size",     "35",     "Held-out labelled samples",     "#BA7517"),
+    ]:
+        with col:
+            st.markdown(
+                f"<div style='background:var(--color-background-secondary,#f5f5f5);"
+                f"border-radius:8px;padding:10px 12px;margin-bottom:4px'>"
+                f"<div style='font-size:13px;font-weight:500;color:var(--color-text-secondary,#555);"
+                f"margin-bottom:6px'>{lbl}</div>"
+                f"<div style='font-size:22px;font-weight:700;color:{clr}'>{val}</div>"
+                f"<div style='font-size:11px;color:#888;margin-top:3px'>{sub}</div>"
+                f"</div>", unsafe_allow_html=True,
+            )
 
     st.divider()
 
-    # ── Method summary ────────────────────────────────────────────────────────
-    st.subheader("Classification method")
-    st.markdown("""
-    The land cover classification follows this pipeline:
+    # ── Per-class metrics + confusion matrix ──────────────────────────────────
+    col_metrics, col_cm = st.columns([1, 1])
 
+    with col_metrics:
+        st.subheader("Per-class performance")
+        st.caption("Precision = how often a predicted class is correct · "
+                   "Recall = how often the true class is detected · "
+                   "F1 = harmonic mean of both")
+
+        classes    = ["Green residential", "Parkland", "Urban", "Water"]
+        precisions = [0.83, 1.00, 1.00, 1.00]
+        recalls    = [1.00, 0.75, 1.00, 1.00]
+        f1s        = [0.91, 0.86, 1.00, 1.00]
+        supports   = [10, 8, 8, 9]
+        colors_cls = ["#639922", "#1D9E75", "#888780", "#378ADD"]
+
+        fig_cls = go.Figure()
+        for vals, name, dash in [
+            (precisions, "Precision", "solid"),
+            (recalls,    "Recall",    "dot"),
+            (f1s,        "F1",        "dash"),
+        ]:
+            fig_cls.add_trace(go.Bar(
+                name=name, x=classes, y=vals,
+                marker_color=[c + ("cc" if name != "F1" else "ff") for c in colors_cls]
+                              if name != "F1" else colors_cls,
+                opacity=0.9 if name == "F1" else 0.55,
+                hovertemplate=f"<b>%{{x}}</b><br>{name}: %{{y:.2f}}<extra></extra>",
+            ))
+        fig_cls.add_hline(y=1.0, line_width=1, line_dash="dot",
+                          line_color="rgba(128,128,128,0.3)")
+        fig_cls.update_layout(
+            barmode="group", height=340,
+            margin=dict(t=10, b=30, l=0, r=0),
+            yaxis=dict(title="Score", range=[0, 1.1],
+                       tickvals=[0, 0.25, 0.5, 0.75, 1.0]),
+            legend=dict(orientation="h", y=1.08),
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(fig_cls, use_container_width=True)
+
+        # Support table
+        st.caption("Test set support (samples per class)")
+        sup_df = pd.DataFrame({
+            "Class":     classes,
+            "Samples":   supports,
+            "Precision": [f"{v:.2f}" for v in precisions],
+            "Recall":    [f"{v:.2f}" for v in recalls],
+            "F1":        [f"{v:.2f}" for v in f1s],
+        })
+        st.dataframe(sup_df, hide_index=True, use_container_width=True)
+
+    with col_cm:
+        st.subheader("Confusion matrix")
+        st.caption("Rows = actual class · Columns = predicted class · "
+                   "Diagonal = correct predictions · Off-diagonal = misclassifications")
+
+        # Confusion matrix data
+        cm = [[10, 0, 0, 0],
+              [ 2, 6, 0, 0],
+              [ 0, 0, 8, 0],
+              [ 0, 0, 0, 9]]
+
+        # Normalise by row (recall per class) for colour, keep raw counts as text
+        cm_pct  = [[v / sum(row) * 100 for v in row] for row in cm]
+        cm_text = [[str(v) for v in row] for row in cm]
+
+        fig_cm = go.Figure(go.Heatmap(
+            z=cm_pct,
+            x=classes,
+            y=classes,
+            text=cm_text,
+            texttemplate="%{text}",
+            textfont=dict(size=16, color="white"),
+            colorscale=[
+                [0.0, "rgba(40,40,40,0.1)"],
+                [0.5, "#1D9E75"],
+                [1.0, "#0a4f3c"],
+            ],
+            showscale=False,
+            hovertemplate="<b>Actual: %{y}</b><br>Predicted: %{x}<br>"
+                          "Count: %{text} (%{z:.0f}%)<extra></extra>",
+        ))
+        fig_cm.update_layout(
+            height=340,
+            margin=dict(t=10, b=60, l=10, r=10),
+            xaxis=dict(title="Predicted", tickfont=dict(size=11), side="bottom"),
+            yaxis=dict(title="Actual",    tickfont=dict(size=11), autorange="reversed"),
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(fig_cm, use_container_width=True)
+
+    # ── Key findings ──────────────────────────────────────────────────────────
+    st.divider()
+    st.subheader("Key findings")
+
+    kf1, kf2 = st.columns(2)
+    with kf1:
+        st.success(
+            "**Urban and Water: perfect classification (F1 = 1.00)**  \n"
+            "Both classes were identified without error on the test set. "
+            "Urban surfaces have distinctive low-reflectance spectral signatures; "
+            "water has very low near-infrared reflectance that is easy to separate."
+        )
+        st.success(
+            "**Green residential: high recall (1.00), moderate precision (0.83)**  \n"
+            "All 10 green residential samples were correctly identified. "
+            "The 2 Parkland samples misclassified as Green residential suggest "
+            "the model slightly over-predicts residential green cover in densely vegetated areas."
+        )
+    with kf2:
+        st.warning(
+            "**Parkland: lower recall (0.75) — the main weakness**  \n"
+            "2 of 8 Parkland samples were misclassified as Green residential. "
+            "This means the model likely **underestimates parkland** and "
+            "**overestimates green residential** coverage in some planning areas. "
+            "The GUB and LGS scores are directionally correct but the "
+            "Parkland/Green residential split should be interpreted with ~15% margin."
+        )
+        st.info(
+            "**Small test set caveat**  \n"
+            "The test set contains only 35 samples. "
+            "While accuracy metrics are strong, confidence intervals are wide — "
+            "the true accuracy could range from approximately 85% to 99% at 95% confidence. "
+            "A larger validation set would improve reliability of per-class estimates."
+        )
+
+    # ── Pipeline ──────────────────────────────────────────────────────────────
+    st.divider()
+    st.subheader("Classification pipeline")
+    st.markdown("""
     1. **Satellite imagery** — multi-spectral imagery exported from Google Earth Engine covering Singapore's full extent
     2. **Manual labelling** — training samples hand-tagged by a human analyst across all four land cover classes
-    3. **Feature extraction** — spectral bands and derived indices extracted per pixel
-    4. **Model training** — XGBoost classifier trained on labelled samples
-    5. **Classification** — trained model applied to the full raster in QGIS
-    6. **Zonal statistics** — pixel counts aggregated to planning area boundaries using QGIS Zonal Histogram
+    3. **Feature extraction** — spectral bands and derived indices extracted per pixel in QGIS
+    4. **Model training** — XGBoost classifier trained and evaluated with train/test split
+    5. **Classification** — trained model applied to the full raster extent in QGIS
+    6. **Zonal statistics** — pixel counts aggregated to planning area polygons using QGIS Zonal Histogram
     """)
 
-    st.divider()
-
-    # ── Accuracy metrics placeholder ──────────────────────────────────────────
-    st.subheader("Accuracy metrics")
-    st.info(
-        "📊 **Model evaluation data not yet loaded.** "
-        "To populate this page, provide the following outputs from your model evaluation:\n\n"
-        "- **Confusion matrix** — predicted vs actual class counts on the held-out test set\n"
-        "- **Per-class metrics** — precision, recall, F1-score, and support for each of the four classes\n"
-        "- **Overall accuracy** — overall classification accuracy and Cohen's Kappa\n"
-        "- **Feature importance** — which spectral bands or indices were most predictive\n\n"
-        "Once you have these, share them and this page will be populated with full visualisations."
-    )
-
-    # Placeholder structure showing what will appear
-    st.divider()
-    st.subheader("What will appear here")
-
-    ph1, ph2 = st.columns(2)
-    with ph1:
-        st.markdown("""
-        **Confusion matrix heatmap**
-        A grid showing how often each class was correctly predicted vs misclassified.
-        Diagonal = correct, off-diagonal = errors.
-        The most important question: does the model confuse Green residential with Parkland?
-        """)
-        st.markdown("""
-        **Per-class F1 scores**
-        A bar chart showing precision, recall, and F1 for each of the four classes.
-        Water is typically easiest to classify; the green class boundary is usually hardest.
-        """)
-    with ph2:
-        st.markdown("""
-        **Feature importance**
-        Which spectral bands drive the classification most —
-        near-infrared typically dominates for vegetation separation.
-        """)
-        st.markdown("""
-        **Known limitations**
-        - Shadow from tall buildings may be misclassified as water
-        - Dense street trees in residential areas may be classified as parkland
-        - Reclaimed or transitional land may not fit cleanly into any class
-        - The model was trained on a snapshot in time — seasonal variation is not accounted for
-        """)
-
+    # ── Implications ──────────────────────────────────────────────────────────
     st.divider()
     st.subheader("Implications for interpretation")
     st.warning(
         "All green space percentages, GUB scores, and LGS scores in this dashboard are derived from "
-        "ML-classified data. Classification errors propagate into every chart. "
-        "Areas near class boundaries — particularly the Green residential / Parkland boundary — "
-        "should be interpreted with caution. Rankings between areas with similar scores (within ~2pp) "
-        "may not reflect genuine differences and could be within the model's margin of error."
+        "ML-classified data. The main risk is that some Parkland pixels are classified as Green residential, "
+        "which would slightly **inflate Green residential %** and **deflate Parkland %** in affected areas.  \n\n"
+        "Practical guidance:  \n"
+        "- Rankings between areas with **similar scores (within ~2–3pp)** should be treated cautiously  \n"
+        "- The **Parkland %** column specifically may be slightly underestimated  \n"
+        "- **GUB and LGS** aggregate both green classes so are less sensitive to this misclassification  \n"
+        "- Urban and Water classifications are reliable"
     )
