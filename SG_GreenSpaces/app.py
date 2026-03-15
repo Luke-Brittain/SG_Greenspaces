@@ -2040,16 +2040,15 @@ elif page == "🔬 Model Assessment":
         colors_cls = ["#639922", "#1D9E75", "#888780", "#378ADD"]
 
         fig_cls = go.Figure()
-        for vals, name, dash in [
-            (precisions, "Precision", "solid"),
-            (recalls,    "Recall",    "dot"),
-            (f1s,        "F1",        "dash"),
+        for vals, name, opacity in [
+            (precisions, "Precision", 0.45),
+            (recalls,    "Recall",    0.65),
+            (f1s,        "F1",        1.00),
         ]:
             fig_cls.add_trace(go.Bar(
                 name=name, x=classes, y=vals,
-                marker_color=[c + ("cc" if name != "F1" else "ff") for c in colors_cls]
-                              if name != "F1" else colors_cls,
-                opacity=0.9 if name == "F1" else 0.55,
+                marker_color=colors_cls,
+                opacity=opacity,
                 hovertemplate=f"<b>%{{x}}</b><br>{name}: %{{y:.2f}}<extra></extra>",
             ))
         fig_cls.add_hline(y=1.0, line_width=1, line_dash="dot",
