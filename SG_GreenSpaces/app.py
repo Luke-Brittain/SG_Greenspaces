@@ -225,7 +225,25 @@ if page == "🗺️ Map":
 
     rgba, bounds = load_raster_preview()
 
-    m = folium.Map(location=[1.3521, 103.8198], zoom_start=11, tiles=None)
+    # Derive map constraints from raster bounds when available
+    if bounds is not None:
+        map_center = [(bounds.bottom + bounds.top) / 2,
+                      (bounds.left  + bounds.right) / 2]
+        max_bounds = [[bounds.bottom - 0.05, bounds.left  - 0.05],
+                      [bounds.top   + 0.05, bounds.right + 0.05]]
+    else:
+        map_center = [1.3521, 103.8198]
+        max_bounds = [[1.15, 103.55], [1.55, 104.15]]
+
+    m = folium.Map(
+        location=map_center,
+        zoom_start=11,
+        min_zoom=10,
+        max_zoom=16,
+        max_bounds=True,
+        tiles=None,
+    )
+    m.fit_bounds(max_bounds)
 
     folium.TileLayer(
         tiles="https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png",
