@@ -203,7 +203,7 @@ st.sidebar.divider()
 
 page = st.sidebar.radio(
     "Page",
-    ["🗺️ Map", "🌿 Green vs Urban", "📊 Land Cover", "👥 Demographics", "💰 Income", "⚖️ Compare", "🏆 Green Metrics"],
+    ["🗺️ Map", "📊 Land Cover", "👥 Demographics", "💰 Income", "⚖️ Compare", "🏆 Green Metrics"],
 )
 
 st.sidebar.divider()
@@ -292,139 +292,6 @@ if page == "🗺️ Map":
 
 
 
-
-elif page == "🌿 Green vs Urban":
-    st.title("Green spaces vs urban cover")
-
-    c1, c2, c3, c4 = st.columns(4)
-    with c1: st.metric("Avg % green (total)", f"{dff['pct_green_total'].mean():.1f}%")
-    with c2: st.metric("Avg % urban",         f"{dff['pct_urban'].mean():.1f}%")
-    with c3: st.metric("Greenest area",        dff.loc[dff["pct_green_total"].idxmax(), "name"])
-    with c4: st.metric("Most urban area",      dff.loc[dff["pct_urban"].idxmax(), "name"])
-
-    st.divider()
-    col_l, col_r = st.columns([2, 1])
-
-    with col_l:
-        st.subheader("Urban vs total green — scatter")
-        color_by = st.selectbox(
-            "Colour by", ["Region", "% Parkland", "% Water", "% Aged 60+"],
-            key="scatter_color",
-        )
-        size_by = st.selectbox("Size by", ["Population", "Equal"], key="scatter_size")
-
-        plot_df = dff.dropna(subset=["pct_urban", "pct_green_total"])
-        sizes   = np.sqrt(plot_df["pop2020_total"].fillna(0)) * 0.6 + 6 if size_by == "Population" else 10
-
-        plot_df = plot_df.copy()
-        plot_df["pct_age_60plus"] = (
-            plot_df["pct_age10_60_69"].fillna(0) +
-            plot_df["pct_age10_70_79"].fillna(0) +
-            plot_df["pct_age10_80plus"].fillna(0)
-        )
-        color_map = {
-            "Region":     ("region",         REGION_COLORS),
-            "% Parkland": ("pct_parkland",   None),
-            "% Water":    ("pct_water",      None),
-            "% Aged 60+": ("pct_age_60plus", None),
-        }
-        c_col, c_scale = color_map[color_by]
-
-        if c_scale:
-            fig = px.scatter(
-                plot_df, x="pct_urban", y="pct_green_total",
-                color=c_col, color_discrete_map=c_scale,
-                size=sizes, size_max=40, hover_name="name",
-                hover_data={"pct_urban": ":.1f", "pct_green_total": ":.1f",
-                            "pct_parkland": ":.1f", "pct_water": ":.1f",
-                            "pop2020_total": ":,", "region": True},
-                labels={"pct_urban": "% Urban", "pct_green_total": "% Green (total)"},
-            )
-        else:
-            fig = px.scatter(
-                plot_df, x="pct_urban", y="pct_green_total",
-                color=c_col, color_continuous_scale="Viridis",
-                size=sizes, size_max=40, hover_name="name",
-                hover_data={"pct_urban": ":.1f", "pct_green_total": ":.1f",
-                            "pop2020_total": ":,", "region": True},
-                labels={"pct_urban": "% Urban", "pct_green_total": "% Green (total)"},
-            )
-
-        fig.update_layout(height=460, margin=dict(t=20, b=40),
-                          plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
-        fig.update_xaxes(gridcolor="rgba(0,0,0,0.06)", zeroline=False)
-        fig.update_yaxes(gridcolor="rgba(0,0,0,0.06)", zeroline=False)
-        st.plotly_chart(fig, use_container_width=True)
-
-    with col_r:
-        st.subheader("Green index by region")
-        reg_avg = (
-            dff.groupby("region")[["pct_green_total", "pct_urban", "pct_water"]]
-            .mean().round(1).reset_index()
-            .sort_values("pct_green_total", ascending=True)
-        )
-        fig_reg = go.Figure()
-        fig_reg.add_trace(go.Bar(
-            y=reg_avg["region"], x=reg_avg["pct_green_total"],
-            orientation="h", name="Green (total)",
-            marker_color=[REGION_COLORS.get(r, "#888") for r in reg_avg["region"]],
-        ))
-        fig_reg.update_layout(
-            height=280, margin=dict(l=10, r=10, t=10, b=30),
-            xaxis_title="% green", yaxis_title="",
-            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-            showlegend=False,
-        )
-        st.plotly_chart(fig_reg, use_container_width=True)
-
-        st.subheader("Green breakdown")
-        st.caption("Parkland vs green residential")
-        gb = (
-            dff.groupby("region")[["pct_green_res", "pct_parkland"]]
-            .mean().round(1).reset_index()
-            .sort_values("pct_green_res", ascending=False)
-        )
-        fig_gb = go.Figure()
-        fig_gb.add_trace(go.Bar(
-            y=gb["region"], x=gb["pct_green_res"],
-            orientation="h", name="Green res.", marker_color="#639922",
-        ))
-        fig_gb.add_trace(go.Bar(
-            y=gb["region"], x=gb["pct_parkland"],
-            orientation="h", name="Parkland", marker_color="#1D9E75",
-        ))
-        fig_gb.update_layout(
-            barmode="stack", height=240, margin=dict(l=10, r=10, t=10, b=30),
-            xaxis_title="% coverage", yaxis_title="",
-            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-        )
-        st.plotly_chart(fig_gb, use_container_width=True)
-
-    st.divider()
-    st.subheader("Green vs non-green — all planning areas")
-    sort_green = st.radio("Sort by", ["% Green (total)", "% Urban", "Name"], horizontal=True)
-    sort_map   = {"% Green (total)": "pct_green_total", "% Urban": "pct_urban", "Name": "name"}
-    bar_df     = dff.sort_values(sort_map[sort_green], ascending=(sort_map[sort_green] == "name"))
-
-    fig_gv = go.Figure()
-    for key, label, color in [
-        ("pct_green_res", "Green residential", "#639922"),
-        ("pct_parkland",  "Parkland",          "#1D9E75"),
-        ("pct_urban",     "Urban",             "#888780"),
-        ("pct_water",     "Water",             "#378ADD"),
-    ]:
-        fig_gv.add_trace(go.Bar(
-            y=bar_df["name"], x=bar_df[key],
-            orientation="h", name=label, marker_color=color,
-        ))
-    fig_gv.update_layout(
-        barmode="stack", height=max(400, len(bar_df) * 16),
-        margin=dict(l=10, r=20, t=10, b=30),
-        xaxis=dict(title="% cover", range=[0, 100]),
-        legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0),
-        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-    )
-    st.plotly_chart(fig_gv, use_container_width=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -618,6 +485,37 @@ elif page == "📊 Land Cover":
                 f"</div>",
                 unsafe_allow_html=True,
             )
+
+    # ── Migrated from Green vs Urban: parkland vs residential by region ────────
+    st.divider()
+    st.subheader("Parkland vs green residential by region")
+    st.caption("Breakdown of green cover type — parkland is managed public space, "
+               "green residential is gardens and vegetated private land.")
+
+    gb = (
+        dff.groupby("region")[["pct_green_res", "pct_parkland"]]
+        .mean().round(1).reset_index()
+        .sort_values("pct_parkland", ascending=False)
+    )
+    fig_gb = go.Figure()
+    fig_gb.add_trace(go.Bar(
+        x=gb["region"], y=gb["pct_parkland"],
+        name="Parkland", marker_color="#1D9E75",
+        hovertemplate="<b>%{x}</b><br>Parkland: %{y:.1f}%<extra></extra>",
+    ))
+    fig_gb.add_trace(go.Bar(
+        x=gb["region"], y=gb["pct_green_res"],
+        name="Green residential", marker_color="#639922",
+        hovertemplate="<b>%{x}</b><br>Green res.: %{y:.1f}%<extra></extra>",
+    ))
+    fig_gb.update_layout(
+        barmode="group", height=300,
+        margin=dict(l=10, r=10, t=10, b=40),
+        yaxis_title="% coverage (avg)",
+        legend=dict(orientation="h", y=1.08),
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+    )
+    st.plotly_chart(fig_gb, use_container_width=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1688,3 +1586,72 @@ elif page == "🏆 Green Metrics":
         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
     )
     st.plotly_chart(fig_sc, use_container_width=True)
+
+    # ── Migrated from Green vs Urban: green vs ageing population ──────────────
+    st.divider()
+    st.subheader("Green metrics vs ageing population")
+    st.caption("Areas with older populations — do they tend to have more or less green space? "
+               "Sized by population, coloured by region.")
+
+    gdf_age = gdf_m.copy()
+    gdf_age["pct_age_60plus"] = (
+        gdf_age["pct_age10_60_69"].fillna(0) +
+        gdf_age["pct_age10_70_79"].fillna(0) +
+        gdf_age["pct_age10_80plus"].fillna(0)
+    )
+    gdf_age = gdf_age.dropna(subset=["pct_age_60plus", "gub", "lgs"])
+
+    age_metric = st.radio(
+        "Green metric", ["GUB", "LGS"], horizontal=True, key="gm_age_metric"
+    )
+    gm_x    = "gub"   if age_metric == "GUB" else "lgs"
+    gm_xlbl = "GUB score" if age_metric == "GUB" else "LGS (%)"
+    gm_xrng = [-1.05, 1.05] if age_metric == "GUB" else [0, 105]
+    gm_xtk  = dict(tickvals=[-1,-0.5,0,0.5,1], zeroline=True,
+                   zerolinecolor="rgba(128,128,128,0.3)") if age_metric == "GUB" else {}
+
+    fig_age = px.scatter(
+        gdf_age,
+        x=gm_x, y="pct_age_60plus",
+        size="pop2020_total", color="region",
+        color_discrete_map=REGION_COLORS,
+        hover_name="name",
+        hover_data={gm_x: ":.3f" if age_metric == "GUB" else ":.1f",
+                    "pct_age_60plus": ":.1f", "pop2020_total": ":,"},
+        labels={gm_x: gm_xlbl, "pct_age_60plus": "% Aged 60+", "region": "Region"},
+        trendline="ols",
+        size_max=40,
+    )
+    # Override per-region trendlines with a single overall line
+    r_all = gdf_age[[gm_x, "pct_age_60plus"]].dropna()
+    if len(r_all) > 2:
+        m, b = np.polyfit(r_all[gm_x], r_all["pct_age_60plus"], 1)
+        x_ln = np.array([r_all[gm_x].min(), r_all[gm_x].max()])
+        fig_age = px.scatter(
+            gdf_age,
+            x=gm_x, y="pct_age_60plus",
+            size="pop2020_total", color="region",
+            color_discrete_map=REGION_COLORS,
+            hover_name="name",
+            hover_data={gm_x: ":.3f" if age_metric == "GUB" else ":.1f",
+                        "pct_age_60plus": ":.1f", "pop2020_total": ":,"},
+            labels={gm_x: gm_xlbl, "pct_age_60plus": "% Aged 60+", "region": "Region"},
+            size_max=40,
+        )
+        fig_age.add_trace(go.Scatter(
+            x=x_ln, y=m * x_ln + b, mode="lines",
+            line=dict(color="rgba(100,100,100,0.5)", width=2, dash="dot"),
+            showlegend=False, hoverinfo="skip",
+        ))
+        r_val = float(np.corrcoef(r_all[gm_x], r_all["pct_age_60plus"])[0, 1])
+        fig_age.add_annotation(
+            x=0.97, y=0.05, xref="paper", yref="paper",
+            text=f"r = {r_val:+.2f}", showarrow=False,
+            font=dict(size=12, color="#888"), xanchor="right",
+        )
+    fig_age.update_layout(
+        height=420, margin=dict(t=20, b=40),
+        xaxis=dict(range=gm_xrng, **gm_xtk),
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+    )
+    st.plotly_chart(fig_age, use_container_width=True)
