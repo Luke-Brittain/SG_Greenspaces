@@ -205,6 +205,12 @@ if page == "🗺️ Map":
                     "pct_parkland", "pct_green_res", "pct_water", "pop2020_total"]],
                 on="PLN_AREA_N", how="left",
             )
+            # Fill NaN so tooltip values display cleanly
+            for col in ["pct_urban", "pct_green_total", "pct_parkland",
+                        "pct_green_res", "pct_water", "pop2020_total"]:
+                if col in merged.columns:
+                    merged[col] = merged[col].fillna(0).round(1)
+
             GeoJson(
                 merged.__geo_interface__,
                 name="Planning areas",
@@ -215,20 +221,61 @@ if page == "🗺️ Map":
                     "fillOpacity": 0,
                 },
                 highlight_function=lambda f: {
+                    # Fill the actual polygon shape on hover, no bounding box
                     "fillColor":   "#ffffff",
-                    "fillOpacity": 0.2,
-                    "weight":      2.5,
+                    "fillOpacity": 0.15,
+                    "weight":      2.0,
                     "color":       "#ffffff",
                 },
-                tooltip=GeoJsonTooltip(
+                tooltip=folium.GeoJsonTooltip(
                     fields=["name", "region", "pop2020_total",
                             "pct_urban", "pct_green_total", "pct_water"],
                     aliases=["Area", "Region", "Population",
                              "% Urban", "% Green (total)", "% Water"],
                     localize=True,
-                    sticky=True,
+                    sticky=False,
+                    style=(
+                        "background-color: rgba(0,0,0,0.75);"
+                        "color: #ffffff;"
+                        "font-family: sans-serif;"
+                        "font-size: 12px;"
+                        "padding: 8px 12px;"
+                        "border-radius: 6px;"
+                        "border: none !important;"
+                        "box-shadow: none !important;"
+                        "outline: none !important;"
+                    ),
                 ),
             ).add_to(m)
+
+            # Inject CSS to fully strip leaflet tooltip bounding box
+            m.get_root().html.add_child(folium.Element("""
+            <style>
+              .leaflet-tooltip {
+                background: transparent !important;
+                border: none !important;
+                box-shadow: none !important;
+                padding: 0 !important;
+                outline: none !important;
+              }
+              .leaflet-tooltip::before,
+              .leaflet-tooltip-top::before,
+              .leaflet-tooltip-bottom::before,
+              .leaflet-tooltip-left::before,
+              .leaflet-tooltip-right::before {
+                display: none !important;
+                border: none !important;
+              }
+              .leaflet-tooltip > div,
+              .leaflet-tooltip table,
+              .leaflet-tooltip tr,
+              .leaflet-tooltip th,
+              .leaflet-tooltip td {
+                border: none !important;
+                outline: none !important;
+              }
+            </style>
+            """))
         else:
             st.info("No shapefile found. Place your planning area .geojson in the app folder.")
 
