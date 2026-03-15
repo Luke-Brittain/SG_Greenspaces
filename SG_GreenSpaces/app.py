@@ -70,11 +70,23 @@ st.markdown("""
   h3 { font-size: 1rem !important; }
 </style>
 <script>
-  // Scroll the Streamlit main content area to top on every page render
+  // Scroll to top on every render — tries all known Streamlit scroll containers
   (function() {
-    var el = window.parent.document.querySelector('[data-testid="stAppViewContainer"] > .main');
-    if (el) el.scrollTo({ top: 0, behavior: 'instant' });
-    window.parent.scrollTo({ top: 0, behavior: 'instant' });
+    var doc = window.parent.document;
+    var selectors = [
+      '.main',
+      '[data-testid="stAppViewContainer"]',
+      '[data-testid="stAppViewContainer"] > .main',
+      '[data-testid="stAppViewBlockContainer"]',
+      '#root > div:first-child',
+      'section.main',
+    ];
+    selectors.forEach(function(sel) {
+      var el = doc.querySelector(sel);
+      if (el) el.scrollTop = 0;
+    });
+    window.parent.document.documentElement.scrollTop = 0;
+    window.parent.document.body.scrollTop = 0;
   })();
 </script>
 """, unsafe_allow_html=True)
