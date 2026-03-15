@@ -433,20 +433,67 @@ elif page == "🌿 Green vs Urban":
 elif page == "📊 Land Cover":
     st.title("Land cover by planning area")
 
-    c1, c2, c3, c4 = st.columns(4)
-    with c1: st.metric("Avg % urban",     f"{dff['pct_urban'].mean():.1f}%")
-    with c2: st.metric("Avg % green res", f"{dff['pct_green_res'].mean():.1f}%")
-    with c3: st.metric("Avg % parkland",  f"{dff['pct_parkland'].mean():.1f}%")
-    with c4: st.metric("Avg % water",     f"{dff['pct_water'].mean():.1f}%")
+    # ── 1. Story-driven scorecards ─────────────────────────────────────────────
+    st.divider()
+    greenest  = dff.loc[dff["pct_green_total"].idxmax()]
+    most_urban= dff.loc[dff["pct_urban"].idxmax()]
+    most_park = dff.loc[dff["pct_parkland"].idxmax()]
+    most_water= dff.loc[dff["pct_water"].idxmax()]
+
+    sc1, sc2, sc3, sc4, sc5, sc6 = st.columns(6)
+    for col, lbl, name_val, stat_val, clr in [
+        (sc1, "Greenest area",       greenest["name"],
+              f"{greenest['pct_green_total']:.1f}% green",    "#639922"),
+        (sc2, "Most urban area",     most_urban["name"],
+              f"{most_urban['pct_urban']:.1f}% urban",        "#888780"),
+        (sc3, "Most parkland",       most_park["name"],
+              f"{most_park['pct_parkland']:.1f}% parkland",   "#1D9E75"),
+        (sc4, "Most water coverage", most_water["name"],
+              f"{most_water['pct_water']:.1f}% water",        "#378ADD"),
+        (sc5, "Avg GUB (filtered)",
+              f"{dff['gub'].mean():+.3f}",
+              f"Range {dff['gub'].min():+.2f} → {dff['gub'].max():+.2f}", "#BA7517"),
+        (sc6, "Avg LGS (filtered)",
+              f"{dff['lgs'].mean():.1f}%",
+              f"Range {dff['lgs'].min():.0f}% → {dff['lgs'].max():.0f}%", "#534AB7"),
+    ]:
+        with col:
+            st.markdown(
+                f"<div style='background:var(--color-background-secondary,#f5f5f5);"
+                f"border-radius:8px;padding:10px 12px;margin-bottom:4px'>"
+                f"<div style='font-size:13px;font-weight:500;"
+                f"color:var(--color-text-secondary,#555);margin-bottom:6px'>{lbl}</div>"
+                f"<div style='font-size:18px;font-weight:700;color:{clr}'>{name_val}</div>"
+                f"<div style='font-size:11px;color:#888;margin-top:3px'>{stat_val}</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
 
     st.divider()
 
-    sort_col = st.selectbox("Sort by", list(LC_LABELS.values()) + ["Name"])
-    sort_key = {v: k for k, v in LC_LABELS.items()}
-    sort_key["Name"] = "name"
-    skey     = sort_key[sort_col]
-    plot_df  = dff.sort_values(skey, ascending=(skey == "name"))
+    # ── 3. Sort + region filter + reference line ───────────────────────────────
+    ctrl1, ctrl2 = st.columns([2, 3])
+    with ctrl1:
+        sort_col = st.selectbox("Sort by", list(LC_LABELS.values()) + ["GUB score", "LGS", "Name"])
+    with ctrl2:
+        all_regions  = sorted(dff["region"].dropna().unique())
+        sel_regions_lc = st.multiselect("Filter by region", all_regions, default=all_regions,
+                                         key="lc_region_filter")
 
+    sort_key = {v: k for k, v in LC_LABELS.items()}
+    sort_key.update({"GUB score": "gub", "LGS": "lgs", "Name": "name"})
+    skey    = sort_key[sort_col]
+    plot_df = dff[dff["region"].isin(sel_regions_lc)].sort_values(
+        skey, ascending=(skey == "name")
+    )
+
+    # SG average for the sort column (for reference line)
+    if skey in dff.columns and skey != "name":
+        sg_ref = dff[skey].mean()
+    else:
+        sg_ref = None
+
+    # ── Main stacked bar ───────────────────────────────────────────────────────
     fig = go.Figure()
     for key, label in LC_LABELS.items():
         fig.add_trace(go.Bar(
@@ -454,8 +501,20 @@ elif page == "📊 Land Cover":
             orientation="h", name=label, marker_color=LC_COLORS[key],
             hovertemplate=f"<b>%{{y}}</b><br>{label}: %{{x:.1f}}%<extra></extra>",
         ))
+
+    # Reference line for sort column average
+    if sg_ref is not None and skey not in ("gub", "lgs", "name"):
+        fig.add_vline(
+            x=sg_ref, line_width=1.5, line_dash="dash",
+            line_color="rgba(255,255,255,0.5)",
+            annotation_text=f"SG avg {sg_ref:.1f}%",
+            annotation_position="top",
+            annotation_font=dict(size=10, color="rgba(255,255,255,0.7)"),
+        )
+
     fig.update_layout(
-        barmode="stack", height=max(500, len(plot_df) * 16),
+        barmode="stack",
+        height=max(400, len(plot_df) * 16),
         margin=dict(l=10, r=20, t=10, b=30),
         xaxis=dict(title="% of planning area", range=[0, 100]),
         legend=dict(orientation="h", yanchor="bottom", y=1.01, xanchor="left", x=0),
@@ -463,23 +522,102 @@ elif page == "📊 Land Cover":
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    st.subheader("Land cover treemap")
-    tm_rows = []
-    for _, row in dff.dropna(subset=["px_total"]).iterrows():
-        for key, label in [("px_green_res", "Green res."), ("px_parkland", "Parkland"),
-                            ("px_urban", "Urban"), ("px_water", "Water")]:
-            if pd.notna(row.get(key)):
-                tm_rows.append({"area": row["name"], "class": label,
-                                 "pixels": row[key], "region": row["region"]})
-    tm_data = pd.DataFrame(tm_rows)
-    if not tm_data.empty:
-        fig_tm = px.treemap(
-            tm_data, path=["region", "area", "class"], values="pixels", color="class",
-            color_discrete_map={"Green res.": "#639922", "Parkland": "#1D9E75",
-                                 "Urban": "#888780", "Water": "#378ADD"},
+    # ── 2. GUB context strip ───────────────────────────────────────────────────
+    st.subheader("Green-Urban Balance (GUB) by planning area")
+    st.caption("Same sort and region filter applied. "
+               "Green bars = net green · Grey bars = net urban · Dashed line = Singapore average.")
+
+    gub_df = plot_df.dropna(subset=["gub"]).copy()
+    sg_gub_avg = dff["gub"].mean()
+
+    fig_gub = go.Figure(go.Bar(
+        y=gub_df["name"],
+        x=gub_df["gub"],
+        orientation="h",
+        marker_color=["#639922" if v >= 0 else "#888780" for v in gub_df["gub"]],
+        hovertemplate="<b>%{y}</b><br>GUB: %{x:+.3f}<extra></extra>",
+    ))
+    fig_gub.add_vline(x=0,         line_width=1,   line_color="rgba(128,128,128,0.4)")
+    fig_gub.add_vline(x=sg_gub_avg, line_width=1.5, line_dash="dash",
+                      line_color="rgba(255,255,255,0.5)",
+                      annotation_text=f"SG avg {sg_gub_avg:+.3f}",
+                      annotation_position="top",
+                      annotation_font=dict(size=10, color="rgba(255,255,255,0.7)"))
+    fig_gub.update_layout(
+        height=max(400, len(gub_df) * 16),
+        margin=dict(l=10, r=20, t=10, b=30),
+        xaxis=dict(title="GUB score", range=[-1, 1],
+                   tickvals=[-1, -0.5, 0, 0.5, 1]),
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+        showlegend=False,
+    )
+    st.plotly_chart(fig_gub, use_container_width=True)
+
+    st.divider()
+
+    # ── 4. Region-aggregated stacked bar (replaces treemap) ────────────────────
+    st.subheader("Land cover by region")
+    st.caption("Population-weighted average % per region — shows structural differences "
+               "without being skewed by the physical size of individual planning areas.")
+
+    reg_lc = (
+        dff.groupby("region")
+        .apply(lambda g: pd.Series({
+            k: (g[k].fillna(0) * g["pop2020_total"].fillna(0)).sum()
+               / g["pop2020_total"].fillna(0).sum()
+            for k in LC_LABELS
+        }))
+        .reset_index()
+    )
+    # Sort regions by pct_green_total descending
+    reg_lc["pct_green_total"] = reg_lc["pct_green_res"] + reg_lc["pct_parkland"]
+    reg_lc = reg_lc.sort_values("pct_green_total", ascending=False)
+
+    fig_reg = go.Figure()
+    for key, label in LC_LABELS.items():
+        fig_reg.add_trace(go.Bar(
+            x=reg_lc["region"], y=reg_lc[key],
+            name=label, marker_color=LC_COLORS[key],
+            hovertemplate=f"<b>%{{x}}</b><br>{label}: %{{y:.1f}}%<extra></extra>",
+        ))
+    fig_reg.update_layout(
+        barmode="stack", height=340,
+        margin=dict(l=10, r=10, t=10, b=40),
+        yaxis=dict(title="% cover (pop-weighted avg)", range=[0, 100]),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+    )
+
+    # Overlay SG average lines for each class
+    for key, label in LC_LABELS.items():
+        sg_class_avg = dff[key].mean()
+        fig_reg.add_hline(
+            y=sg_class_avg, line_dash="dot", line_width=1,
+            line_color=LC_COLORS[key],
+            opacity=0.4,
         )
-        fig_tm.update_layout(height=500, margin=dict(t=10, b=10))
-        st.plotly_chart(fig_tm, use_container_width=True)
+
+    cl_reg, cr_reg = st.columns([3, 2])
+    with cl_reg:
+        st.plotly_chart(fig_reg, use_container_width=True)
+
+    with cr_reg:
+        # Concentration callout — auto-generated insight text
+        st.markdown("**Regional highlights**")
+        for key, label in LC_LABELS.items():
+            max_reg = reg_lc.loc[reg_lc[key].idxmax(), "region"].title()
+            min_reg = reg_lc.loc[reg_lc[key].idxmin(), "region"].title()
+            max_val = reg_lc[key].max()
+            min_val = reg_lc[key].min()
+            st.markdown(
+                f"<div style='padding:6px 0;border-bottom:0.5px solid "
+                f"rgba(128,128,128,0.2);font-size:12px'>"
+                f"<span style='color:{LC_COLORS[key]};font-weight:600'>{label}</span>"
+                f" — highest in <strong>{max_reg}</strong> ({max_val:.1f}%), "
+                f"lowest in <strong>{min_reg}</strong> ({min_val:.1f}%)"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
 
 
 # ══════════════════════════════════════════════════════════════════════════════
