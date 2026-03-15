@@ -198,12 +198,13 @@ def safe_m(row, col):
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 st.sidebar.title("🇸🇬 Singapore Dashboard")
-st.sidebar.markdown("Land cover · Demographics · Income")
+st.sidebar.markdown("Exploring green space, demographics and income across Singapore's 55 planning areas.")
+st.sidebar.markdown("📖 Start with **Introduction** if this is your first visit.")
 st.sidebar.divider()
 
 page = st.sidebar.radio(
     "Page",
-    ["🗺️ Map", "📊 Land Cover", "👥 Demographics", "💰 Income", "⚖️ Compare", "🏆 Green Metrics"],
+    ["📖 Introduction", "🗺️ Map", "📊 Land Cover", "👥 Demographics", "💰 Income", "⚖️ Compare", "🏆 Green Metrics", "🔬 Model Assessment"],
 )
 
 st.sidebar.divider()
@@ -216,10 +217,177 @@ if show_residential_only:
     dff = dff[dff["pop2020_total"] > 1000]
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# PAGE 0 — INTRODUCTION
+# ══════════════════════════════════════════════════════════════════════════════
+if page == "📖 Introduction":
+    st.title("Singapore Green Space & Demographics Dashboard")
+    st.caption("An analytical tool for exploring the distribution of green space, demographics, and income across Singapore's 55 planning areas.")
+
+    # ── Purpose ───────────────────────────────────────────────────────────────
+    st.divider()
+    st.subheader("Purpose")
+    st.markdown("""
+    This dashboard was built to answer a central question:
+
+    > **How is green space distributed across Singapore's planning areas, and how does that distribution relate to the demographics and economic characteristics of the people who live there?**
+
+    It combines satellite-derived land cover classification with census demographics and household income data to enable spatial comparison across Singapore's 55 planning areas.
+    The dashboard is intended for urban planners, policy researchers, and anyone interested in the relationship between green space and liveability.
+    """)
+
+    # ── Data sources ──────────────────────────────────────────────────────────
+    st.divider()
+    st.subheader("Data sources")
+
+    col_a, col_b = st.columns(2)
+    with col_a:
+        for title, body, clr in [
+            ("🛰️ Satellite imagery — Google Earth Engine",
+             "Multi-spectral satellite imagery of Singapore was exported from Google Earth Engine (GEE). "
+             "The imagery captures surface reflectance across visible and near-infrared bands, enabling "
+             "the distinction of vegetated, built, and water surfaces.",
+             "#1D9E75"),
+            ("🤖 Land cover classification — XGBoost + QGIS",
+             "A supervised machine learning classifier (XGBoost) was trained on **manually tagged training samples** "
+             "drawn directly from the satellite imagery. Each sample was hand-labelled by a human analyst "
+             "into one of four classes. The trained model was then applied to the full Singapore extent "
+             "inside QGIS, producing a pixel-level land cover raster.",
+             "#534AB7"),
+        ]:
+            st.markdown(
+                f"<div style='background:var(--color-background-secondary,#f5f5f5);"
+                f"border-radius:8px;padding:14px 16px;margin-bottom:12px'>"
+                f"<div style='font-size:14px;font-weight:600;color:{clr};margin-bottom:8px'>{title}</div>"
+                f"<div style='font-size:13px;line-height:1.7'>{body}</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+    with col_b:
+        for title, body, clr in [
+            ("👥 Demographics — Singapore Census 2020",
+             "Resident population data by planning area, subzone, age group (5-year bands), and sex from the "
+             "**2020 Census of Population**, sourced from data.gov.sg. "
+             "Covers all 55 planning areas with full age-sex breakdowns.",
+             "#BA7517"),
+            ("💰 Income — General Household Survey 2015",
+             "Gross monthly income from work by planning area from the "
+             "**General Household Survey (GHS) 2015**, sourced from data.gov.sg. "
+             "Available for 28 of 55 planning areas — industrial zones, military areas, "
+             "and non-residential areas are not covered.",
+             "#E24B4A"),
+        ]:
+            st.markdown(
+                f"<div style='background:var(--color-background-secondary,#f5f5f5);"
+                f"border-radius:8px;padding:14px 16px;margin-bottom:12px'>"
+                f"<div style='font-size:14px;font-weight:600;color:{clr};margin-bottom:8px'>{title}</div>"
+                f"<div style='font-size:13px;line-height:1.7'>{body}</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+    # ── Land cover classes ────────────────────────────────────────────────────
+    st.divider()
+    st.subheader("Land cover classification")
+    st.markdown("The XGBoost classifier assigns every pixel to one of four classes. "
+                "Understanding how these are defined is important for interpreting all charts in this dashboard.")
+
+    lc_col1, lc_col2, lc_col3, lc_col4 = st.columns(4)
+    for col, clr, name, defn in [
+        (lc_col1, "#639922", "🌿 Green residential",
+         "Vegetated land within residential areas — gardens, street trees, verges, and private green cover. "
+         "Reflects incidental green space rather than managed public parks."),
+        (lc_col2, "#1D9E75", "🏞️ Parkland",
+         "Managed public green space — nature reserves, parks, recreational fields, and forested areas. "
+         "Higher ecological and recreational value than green residential cover."),
+        (lc_col3, "#888780", "🏙️ Urban",
+         "Built surfaces — roads, buildings, industrial areas, and impervious surfaces. "
+         "Includes all non-vegetated, non-water land cover."),
+        (lc_col4, "#378ADD", "💧 Water",
+         "Open water bodies — reservoirs, rivers, coastal water, and canals. "
+         "Excluded from the LGS denominator since it is not habitable land."),
+    ]:
+        with col:
+            st.markdown(
+                f"<div style='background:var(--color-background-secondary,#f5f5f5);"
+                f"border-left:4px solid {clr};border-radius:8px;"
+                f"padding:14px 16px;height:100%'>"
+                f"<div style='font-size:14px;font-weight:700;color:{clr};margin-bottom:8px'>{name}</div>"
+                f"<div style='font-size:12px;line-height:1.6'>{defn}</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+    # ── Composite metrics ─────────────────────────────────────────────────────
+    st.divider()
+    st.subheader("Composite green metrics")
+    st.markdown("Two summary scores are computed from the classified land cover to enable single-number comparison:")
+
+    m_col1, m_col2 = st.columns(2)
+    with m_col1:
+        st.markdown(
+            "<div style='background:var(--color-background-secondary,#f5f5f5);"
+            "border-radius:8px;padding:14px 16px'>"
+            "<div style='font-size:14px;font-weight:600;color:#639922;margin-bottom:8px'>"
+            "Green-Urban Balance (GUB)</div>"
+            "<div style='font-size:13px;line-height:1.7'>"
+            "<code>(green − urban) / (green + urban)</code><br><br>"
+            "Ranges from <strong>−1</strong> (entirely urban) to <strong>+1</strong> (entirely green). "
+            "Zero means green and urban cover are equal. Avoids division instability from areas with near-zero urban cover."
+            "</div></div>",
+            unsafe_allow_html=True,
+        )
+    with m_col2:
+        st.markdown(
+            "<div style='background:var(--color-background-secondary,#f5f5f5);"
+            "border-radius:8px;padding:14px 16px'>"
+            "<div style='font-size:14px;font-weight:600;color:#1D9E75;margin-bottom:8px'>"
+            "Liveability Green Score (LGS)</div>"
+            "<div style='font-size:13px;line-height:1.7'>"
+            "<code>(parkland + green residential) / (100 − water) × 100</code><br><br>"
+            "Green cover as a percentage of <em>habitable</em> land. "
+            "Removing water from the denominator prevents coastal and reservoir-adjacent areas "
+            "from appearing artificially low in green coverage."
+            "</div></div>",
+            unsafe_allow_html=True,
+        )
+
+    # ── Navigation guide ──────────────────────────────────────────────────────
+    st.divider()
+    st.subheader("How to use this dashboard")
+    st.markdown("""
+    The pages are designed to be explored in order, building from spatial overview to thematic analysis to synthesis:
+
+    | Page | Purpose |
+    |---|---|
+    | 🗺️ **Map** | Start here — see the classified land cover spatially and hover any area for a quick stats summary |
+    | 📊 **Land Cover** | Explore how green, urban, and water cover varies across all 55 planning areas and five regions |
+    | 👥 **Demographics** | Understand the age and sex profile of each planning area and how it relates to green cover |
+    | 💰 **Income** | Examine whether wealthier areas have more or better-quality green space |
+    | ⚖️ **Compare** | Select any two planning areas or regions for a side-by-side comparison |
+    | 🏆 **Green Metrics** | See all 55 areas ranked by GUB and LGS — the dashboard's central analytical output |
+
+    The **sidebar filters** (region and residential areas only) apply to all pages except the Map.
+    """)
+
+    # ── Important caveats ─────────────────────────────────────────────────────
+    st.divider()
+    st.subheader("Important caveats")
+    st.warning(
+        "**Classification uncertainty** — the land cover data is produced by an ML model trained on "
+        "manually tagged samples. All classifications carry uncertainty, particularly at class boundaries "
+        "(e.g. dense street trees may be classified as parkland rather than green residential). "
+        "See the **🔬 Model Assessment** page for accuracy metrics once model evaluation data is available.\n\n"
+        "**Income data vintage** — GHS 2015 income data is a decade old. Income distributions have likely "
+        "shifted, particularly in areas with significant development since 2015.\n\n"
+        "**Census 2020 context** — demographic data reflects the population at the time of the 2020 Census, "
+        "prior to post-pandemic population changes."
+    )
+
 # ═══════════════════════════════════════════════════════════════════════════# ==============================================================================
 # PAGE 1 — MAP
 # ══════════════════════════════════════════════════════════════════════════════
-if page == "🗺️ Map":
+elif page == "🗺️ Map":
     st.title("Land cover map")
     st.caption("Classified land cover overlaid with planning area boundaries. Hover over a planning area to see its stats in the panel (top-right).")
 
@@ -461,6 +629,7 @@ if page == "🗺️ Map":
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "📊 Land Cover":
     st.title("Land cover by planning area")
+    st.caption("Explore the spatial distribution of green, urban, and water cover. For composite scores ranking all areas, see 🏆 Green Metrics.")
 
     # ── 1. Story-driven scorecards ─────────────────────────────────────────────
     st.divider()
@@ -685,6 +854,7 @@ elif page == "📊 Land Cover":
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "👥 Demographics":
     st.title("Demographics")
+    st.caption("Age, sex and population profiles by planning area or region. To compare two areas side by side, use ⚖️ Compare.")
 
     view = st.radio("View", ["By planning area", "By region"], horizontal=True)
 
@@ -924,7 +1094,7 @@ elif page == "👥 Demographics":
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "💰 Income":
     st.title("Income distribution")
-    st.caption("GHS 2015 — residential planning areas only · 28 of 55 areas have income data")
+    st.caption("GHS 2015 — residential planning areas only · 28 of 55 areas have income data · To compare income profiles between two areas, use ⚖️ Compare.")
 
     inc_df     = dff.dropna(subset=["income_total_workers_thousands"]).copy()
     inc_keys   = [k for k, _, _ in INC_BANDS]
@@ -1047,7 +1217,7 @@ elif page == "💰 Income":
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "⚖️ Compare":
     st.title("Planning area comparison")
-    st.caption("Select two areas to compare — choose any planning area, a region average, or Singapore overall.")
+    st.caption("Select any two planning areas, regions, or Singapore overall for a head-to-head comparison across land cover, demographics, and income. Explore individual areas first on the Land Cover and Demographics pages.")
 
     def safe(v, fmt=".1f"):
         try:
@@ -1593,9 +1763,10 @@ elif page == "⚖️ Compare":
 # PAGE 7 — GREEN METRICS
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "🏆 Green Metrics":
-    st.title("Green metrics")
+    st.title("🏆 Green metrics — the bottom line")
     st.caption(
-        "Two composite scores summarising each planning area's green character in a single number. "
+        "GUB and LGS distil everything on the Land Cover page into a single ranked score per area. "
+        "This is the dashboard's central analytical output — every other page builds toward this view. "
         "Use the sidebar filters to focus on residential areas or specific regions."
     )
 
@@ -1817,3 +1988,84 @@ elif page == "🏆 Green Metrics":
         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
     )
     st.plotly_chart(fig_age, use_container_width=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PAGE 8 — MODEL ASSESSMENT
+# ══════════════════════════════════════════════════════════════════════════════
+elif page == "🔬 Model Assessment":
+    st.title("Model assessment")
+    st.caption(
+        "This page documents the accuracy and limitations of the XGBoost land cover classifier "
+        "used to produce all green space data in this dashboard."
+    )
+
+    st.divider()
+
+    # ── Method summary ────────────────────────────────────────────────────────
+    st.subheader("Classification method")
+    st.markdown("""
+    The land cover classification follows this pipeline:
+
+    1. **Satellite imagery** — multi-spectral imagery exported from Google Earth Engine covering Singapore's full extent
+    2. **Manual labelling** — training samples hand-tagged by a human analyst across all four land cover classes
+    3. **Feature extraction** — spectral bands and derived indices extracted per pixel
+    4. **Model training** — XGBoost classifier trained on labelled samples
+    5. **Classification** — trained model applied to the full raster in QGIS
+    6. **Zonal statistics** — pixel counts aggregated to planning area boundaries using QGIS Zonal Histogram
+    """)
+
+    st.divider()
+
+    # ── Accuracy metrics placeholder ──────────────────────────────────────────
+    st.subheader("Accuracy metrics")
+    st.info(
+        "📊 **Model evaluation data not yet loaded.** "
+        "To populate this page, provide the following outputs from your model evaluation:\n\n"
+        "- **Confusion matrix** — predicted vs actual class counts on the held-out test set\n"
+        "- **Per-class metrics** — precision, recall, F1-score, and support for each of the four classes\n"
+        "- **Overall accuracy** — overall classification accuracy and Cohen's Kappa\n"
+        "- **Feature importance** — which spectral bands or indices were most predictive\n\n"
+        "Once you have these, share them and this page will be populated with full visualisations."
+    )
+
+    # Placeholder structure showing what will appear
+    st.divider()
+    st.subheader("What will appear here")
+
+    ph1, ph2 = st.columns(2)
+    with ph1:
+        st.markdown("""
+        **Confusion matrix heatmap**
+        A grid showing how often each class was correctly predicted vs misclassified.
+        Diagonal = correct, off-diagonal = errors.
+        The most important question: does the model confuse Green residential with Parkland?
+        """)
+        st.markdown("""
+        **Per-class F1 scores**
+        A bar chart showing precision, recall, and F1 for each of the four classes.
+        Water is typically easiest to classify; the green class boundary is usually hardest.
+        """)
+    with ph2:
+        st.markdown("""
+        **Feature importance**
+        Which spectral bands drive the classification most —
+        near-infrared typically dominates for vegetation separation.
+        """)
+        st.markdown("""
+        **Known limitations**
+        - Shadow from tall buildings may be misclassified as water
+        - Dense street trees in residential areas may be classified as parkland
+        - Reclaimed or transitional land may not fit cleanly into any class
+        - The model was trained on a snapshot in time — seasonal variation is not accounted for
+        """)
+
+    st.divider()
+    st.subheader("Implications for interpretation")
+    st.warning(
+        "All green space percentages, GUB scores, and LGS scores in this dashboard are derived from "
+        "ML-classified data. Classification errors propagate into every chart. "
+        "Areas near class boundaries — particularly the Green residential / Parkland boundary — "
+        "should be interpreted with caution. Rankings between areas with similar scores (within ~2pp) "
+        "may not reflect genuine differences and could be within the model's margin of error."
+    )
