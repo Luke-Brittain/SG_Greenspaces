@@ -226,83 +226,32 @@ if page == "🗺️ Map":
                     "weight":      2.0,
                     "color":       "#ffffff",
                 },
-            ).add_to(m)
-
-            # Custom floating tooltip via injected JS — no Leaflet tooltip wrapper
-            m.get_root().html.add_child(folium.Element("""
-            <script>
-            // Clamp tooltip inside the map div — uses map container dimensions
-            // because streamlit-folium renders inside an iframe
-            document.addEventListener("mousemove", function(e) {
-                var cx = e.clientX, cy = e.clientY;
-                setTimeout(function() {
-                    var tt  = document.querySelector(".leaflet-tooltip");
-                    var map = document.getElementById("map") ||
-                              document.querySelector(".folium-map") ||
-                              document.querySelector(".leaflet-container");
-                    if (!tt || !map) return;
-                    var ttW = tt.offsetWidth;
-                    var ttH = tt.offsetHeight;
-                    if (!ttW || !ttH) return;
-                    var pad    = 16;
-                    var mRect  = map.getBoundingClientRect();
-                    // Available space inside the map container
-                    var maxX   = mRect.right  - ttW - pad;
-                    var maxY   = mRect.bottom - ttH - pad;
-                    var minX   = mRect.left   + pad;
-                    var minY   = mRect.top    + pad;
-                    // Start from Leaflet's own placement
-                    var curLeft = parseFloat(tt.style.left) || (cx + 16);
-                    var curTop  = parseFloat(tt.style.top)  || (cy - 10);
-                    // Flip left if spilling past right edge of map
-                    if (curLeft + ttW + pad > mRect.right) {
-                        curLeft = cx - ttW - 16;
-                    }
-                    // Flip up if spilling past bottom edge of map
-                    if (curTop + ttH + pad > mRect.bottom) {
-                        curTop = cy - ttH - 10;
-                    }
-                    // Hard clamp within map bounds
-                    curLeft = Math.max(minX, Math.min(curLeft, maxX));
-                    curTop  = Math.max(minY, Math.min(curTop,  maxY));
-                    tt.style.left = curLeft + "px";
-                    tt.style.top  = curTop  + "px";
-                }, 0);
-            });
-            </script>
-            """))
-
-            folium.GeoJson(
-                merged.__geo_interface__,
-                name="__tt_layer__",
-                style_function=lambda f: {
-                    "fillColor": "transparent", "color": "transparent",
-                    "weight": 0, "fillOpacity": 0,
-                },
                 tooltip=folium.GeoJsonTooltip(
                     fields=["name", "region", "pop2020_total",
                             "pct_urban", "pct_green_total", "pct_parkland", "pct_water"],
-                    aliases=["Area", "Region", "Population", "% Urban", "% Green", "% Parkland", "% Water"],
+                    aliases=["Area", "Region", "Population",
+                             "% Urban", "% Green", "% Parkland", "% Water"],
                     localize=True,
-                    sticky=False,
+                    sticky=True,
                     style=(
                         "background-color:rgba(15,15,15,0.88);"
                         "color:#fff;"
                         "font-family:sans-serif;"
-                        "font-size:13px;"
-                        "padding:10px 14px;"
+                        "font-size:12px;"
+                        "padding:8px 12px;"
                         "border-radius:8px;"
-                        "box-shadow:0 4px 16px rgba(0,0,0,0.5);"
                         "border:none;"
-                        "min-width:180px;"
-                        "line-height:1.7;"
+                        "max-width:240px;"
+                        "line-height:1.6;"
+                        "word-wrap:break-word;"
                     ),
                 ),
             ).add_to(m)
 
+            # Strip Leaflet tooltip border/arrow; use transform to anchor
+            # tooltip above-left of cursor so it never spills below viewport
             m.get_root().html.add_child(folium.Element("""
             <style>
-              .__tt_layer__ { display:none; }
               .leaflet-tooltip {
                 background: rgba(15,15,15,0.88) !important;
                 border: none !important;
@@ -310,42 +259,18 @@ if page == "🗺️ Map":
                 box-shadow: 0 4px 16px rgba(0,0,0,0.5) !important;
                 padding: 8px 12px !important;
                 color: #fff !important;
-                font-family: sans-serif !important;
                 font-size: 12px !important;
-                min-width: 160px !important;
-                max-width: 260px !important;
-                line-height: 1.5 !important;
+                max-width: 240px !important;
+                line-height: 1.6 !important;
                 word-wrap: break-word !important;
+                /* Shift tooltip up and left so it sits above-left of cursor */
+                transform: translate(-110%, -110%) !important;
               }
-              .leaflet-tooltip::before { display:none !important; }
-              .leaflet-tooltip table {
-                border: none !important;
-                border-collapse: collapse !important;
-                width: 100% !important;
-                table-layout: auto !important;
-              }
-              .leaflet-tooltip th {
-                color: #bbb !important;
-                font-weight: 400 !important;
-                font-size: 11px !important;
-                padding: 2px 10px 2px 0 !important;
-                border: none !important;
-                white-space: nowrap !important;
-                text-align: left !important;
-                vertical-align: top !important;
-              }
-              .leaflet-tooltip td {
-                color: #ffffff !important;
-                font-weight: 600 !important;
-                font-size: 12px !important;
-                padding: 2px 0 !important;
-                border: none !important;
-                text-align: right !important;
-                white-space: normal !important;
-                word-break: break-word !important;
-                max-width: 160px !important;
-              }
-              .leaflet-tooltip tr { border: none !important; }
+              .leaflet-tooltip::before { display: none !important; }
+              .leaflet-tooltip table  { border:none !important; border-collapse:collapse !important; width:100% !important; }
+              .leaflet-tooltip th     { color:#bbb !important; font-weight:400 !important; font-size:11px !important; padding:2px 10px 2px 0 !important; border:none !important; white-space:nowrap !important; text-align:left !important; vertical-align:top !important; }
+              .leaflet-tooltip td     { color:#fff !important; font-weight:600 !important; font-size:12px !important; padding:2px 0 !important; border:none !important; text-align:right !important; white-space:normal !important; word-break:break-word !important; max-width:150px !important; }
+              .leaflet-tooltip tr     { border:none !important; }
             </style>
             """))
         else:
