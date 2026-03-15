@@ -1031,29 +1031,80 @@ elif page == "⚖️ Compare":
     st.plotly_chart(fig_pyr, use_container_width=True)
 
     # Radar using broad bands for shape comparison
-    st.subheader("Age structure — broad bands")
-    age_keys_broad   = ["pct_age_0_14", "pct_age_15_64", "pct_age_65plus"]
-    age_labels_broad = ["Under 15", "15–64", "65+"]
-    radar_age = go.Figure()
-    radar_age.add_trace(go.Scatterpolar(
-        r=[safe(ra[k]) for k in age_keys_broad] + [safe(ra[age_keys_broad[0]])],
-        theta=age_labels_broad + [age_labels_broad[0]],
-        fill="toself", name=pa_a,
-        line_color="#639922", fillcolor="rgba(99,153,34,0.2)",
-    ))
-    radar_age.add_trace(go.Scatterpolar(
-        r=[safe(rb[k]) for k in age_keys_broad] + [safe(rb[age_keys_broad[0]])],
-        theta=age_labels_broad + [age_labels_broad[0]],
-        fill="toself", name=pa_b,
-        line_color="#378ADD", fillcolor="rgba(55,138,221,0.2)",
-    ))
-    radar_age.update_layout(
-        polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
-        height=320, margin=dict(t=30, b=10, l=60, r=60),
-        legend=dict(orientation="h", y=1.12),
-        paper_bgcolor="rgba(0,0,0,0)",
-    )
-    st.plotly_chart(radar_age, use_container_width=True)
+    st.subheader("Age structure — 10-year bands")
+
+    # Group 5-year census bands into 10-year bands for radar
+    # bands_10: list of (label, [5yr_band_keys_to_sum])
+    bands_10 = [
+        ("0–9",   ["0_4",  "5_9"]),
+        ("10–19", ["10_14","15_19"]),
+        ("20–29", ["20_24","25_29"]),
+        ("30–39", ["30_34","35_39"]),
+        ("40–49", ["40_44","45_49"]),
+        ("50–59", ["50_54","55_59"]),
+        ("60–69", ["60_64","65_69"]),
+        ("70–79", ["70_74","75_79"]),
+        ("80+",   ["80_84","85_89","90andOver"]),
+    ]
+
+    def pct_10yr(row, bands):
+        """Sum 5-year total bands and express as % of population."""
+        total = max(safe(row.get("pop2020_total", 0)), 1)
+        return sum(safe(row.get(f"pop2020_t_{b}", 0)) for b in bands) / total * 100
+
+    radar_labels_10 = [lbl for lbl, _ in bands_10]
+    radar_vals_a    = [pct_10yr(ra, bnds) for _, bnds in bands_10]
+    radar_vals_b    = [pct_10yr(rb, bnds) for _, bnds in bands_10]
+
+    # Close the polygon by repeating first value
+    r_a = radar_vals_a + [radar_vals_a[0]]
+    r_b = radar_vals_b + [radar_vals_b[0]]
+    theta = radar_labels_10 + [radar_labels_10[0]]
+
+    radar_max = round(max(radar_vals_a + radar_vals_b) * 1.2)
+
+    cl_r, cr_r = st.columns([3, 2])
+    with cl_r:
+        radar_age = go.Figure()
+        radar_age.add_trace(go.Scatterpolar(
+            r=r_a, theta=theta,
+            fill="toself", name=pa_a,
+            line_color="#639922", fillcolor="rgba(99,153,34,0.25)",
+        ))
+        radar_age.add_trace(go.Scatterpolar(
+            r=r_b, theta=theta,
+            fill="toself", name=pa_b,
+            line_color="#378ADD", fillcolor="rgba(55,138,221,0.25)",
+        ))
+        radar_age.update_layout(
+            polar=dict(radialaxis=dict(
+                visible=True,
+                range=[0, radar_max],
+                ticksuffix="%",
+                tickfont=dict(size=10),
+            )),
+            height=380,
+            margin=dict(t=50, b=20, l=60, r=60),
+            legend=dict(orientation="h", y=1.15, x=0.5, xanchor="center"),
+            paper_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(radar_age, use_container_width=True)
+
+    with cr_r:
+        st.markdown("**Difference (A minus B)**")
+        for label, vals_a, vals_b in zip(radar_labels_10, radar_vals_a, radar_vals_b):
+            diff   = vals_a - vals_b
+            arrow  = "▲" if diff > 0.05 else ("▼" if diff < -0.05 else "—")
+            colour = "#639922" if diff > 0.05 else ("#378ADD" if diff < -0.05 else "#888")
+            st.markdown(
+                f"<div style='display:flex;justify-content:space-between;"
+                f"padding:5px 0;border-bottom:0.5px solid rgba(128,128,128,0.2);font-size:12px'>"
+                f"<span style='color:#aaa'>{label}</span>"
+                f"<span style='color:{colour};font-weight:600'>{arrow} {abs(diff):.1f}pp</span>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+        st.caption("pp = percentage points. ▲ = Area A higher")
 
     # ── Row 3: Income (only if both have data) ─────────────────────────────────
     st.divider()
