@@ -309,7 +309,7 @@ if page == "🗺️ Map":
         _panel_and_js = """
         <style>
           #stats-panel {
-            position:fixed; top:80px; right:20px; z-index:9999;
+            position:absolute; top:12px; right:12px; z-index:9999;
             background:rgba(15,15,15,0.9); color:#fff;
             padding:14px 16px; border-radius:10px;
             font-family:sans-serif; font-size:12px; line-height:1.7;
@@ -354,7 +354,7 @@ if page == "🗺️ Map":
           <div class="sp-row"><span class="sp-label">LGS</span><span class="sp-val">64.1%</span></div>
         </div>
 
-        <div style="position:fixed;bottom:30px;left:30px;z-index:9999;
+        <div style="position:absolute;bottom:30px;left:10px;z-index:9999;
                     background:rgba(0,0,0,0.7);color:#fff;padding:10px 14px;
                     border-radius:8px;font-size:12px;line-height:1.8">
           <b>Land cover</b><br>
@@ -450,7 +450,7 @@ if page == "🗺️ Map":
         st.info("No shapefile found. Place your planning area .geojson in the app folder.")
 
     folium.LayerControl().add_to(m)
-    map_data = st_folium(m, width="100%", height=640, returned_objects=[])
+    map_data = st_folium(m, width="100%", height=800, returned_objects=[])
 
 
 
