@@ -60,7 +60,7 @@ INC_BANDS = [
     ("income_10000_over",  "$10k+",  "#534AB7"),
 ]
 
-# ── CSS ────────────────────────────────────────────────────────────────────────
+# ── CSS + scroll-to-top ───────────────────────────────────────────────────────
 st.markdown("""
 <style>
   [data-testid="stMetricValue"] { font-size: 1.6rem; }
@@ -69,6 +69,14 @@ st.markdown("""
   h2 { font-size: 1.15rem !important; }
   h3 { font-size: 1rem !important; }
 </style>
+<script>
+  // Scroll the Streamlit main content area to top on every page render
+  (function() {
+    var el = window.parent.document.querySelector('[data-testid="stAppViewContainer"] > .main');
+    if (el) el.scrollTo({ top: 0, behavior: 'instant' });
+    window.parent.scrollTo({ top: 0, behavior: 'instant' });
+  })();
+</script>
 """, unsafe_allow_html=True)
 
 # ── Data loading ───────────────────────────────────────────────────────────────
