@@ -195,343 +195,161 @@ if show_residential_only:
     dff = dff[dff["pop2020_total"] > 1000]
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# ═══════════════════════════════════════════════════════════════════════════# ==============================================================================
 # PAGE 1 — MAP
-# ══════════════════════════════════════════════════════════════════════════════
+# ==============================================================================
 if page == "🗺️ Map":
     st.title("Land cover map")
+    st.caption("Drag the ⇔ handle to swipe between satellite and classification. Click a planning area for stats.")
 
     sat_rgba, sat_bounds = load_satellite_preview()
+    rgba, bounds         = load_raster_preview()
 
-    # ── Temporary debug — remove once satellite is confirmed loading ──
-    st.sidebar.markdown("**Debug — files in BASE_DIR:**")
-    for _f in sorted(os.listdir(BASE_DIR)):
-        st.sidebar.caption(_f)
-    # ───────────────────────────────────────────────────────────────────
-
-    rgba, bounds = load_raster_preview()
-
-    # ── Encode both images to base64 for inline HTML ──
     import base64, io
 
-    def img_to_b64(arr: np.ndarray) -> str:
+    def img_to_b64(arr):
         buf = io.BytesIO()
         Image.fromarray(arr, mode="RGBA").save(buf, format="PNG")
         return base64.b64encode(buf.getvalue()).decode()
 
-    has_sat  = sat_rgba is not None
-    has_lc   = rgba is not None
+    has_sat = sat_rgba is not None
+    has_lc  = rgba is not None
+    if not has_sat: st.warning("Satellite image not found.")
+    if not has_lc:  st.warning("Classified raster not found.")
+    sat_b64 = img_to_b64(sat_rgba) if has_sat else ""
+    lc_b64  = img_to_b64(rgba)     if has_lc  else ""
+    b       = bounds if has_lc else (sat_bounds if has_sat else None)
 
-    # ── Map mode selector ──
-    map_mode = st.radio(
-        "Map mode",
-        ["🛰 Satellite + classification swipe", "📍 Classification + boundaries"],
-        horizontal=True,
-    )
-
-    col_map, col_info = st.columns([3, 1])
-
-    with col_map:
-
-        # ════════════════════════════════════════════════════════════════════
-        # MODE A — Swipe slider (satellite left, classified right)
-        # Uses a self-contained HTML component — no folium needed
-        # ════════════════════════════════════════════════════════════════════
-        if map_mode == "🛰 Satellite + classification swipe":
-
-            if not has_sat or not has_lc:
-                missing = []
-                if not has_sat: missing.append("satellite image")
-                if not has_lc:  missing.append("classified raster")
-                st.warning(f"Missing: {' and '.join(missing)}. Both files are needed for swipe mode.")
-            else:
-                sat_b64 = img_to_b64(sat_rgba)
-                lc_b64  = img_to_b64(rgba)
-
-                swipe_html = f"""
-<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<style>
-  html, body {{ margin:0; padding:0; height:100%; }}
-  #map {{ width:100%; height:560px; }}
-  .swipe-handle {{
-    position:absolute; top:0; bottom:0; width:4px;
-    background:#fff; cursor:ew-resize; z-index:1000;
-    box-shadow:0 0 6px rgba(0,0,0,0.5);
-  }}
-  .swipe-arrow {{
-    position:absolute; top:50%; transform:translateY(-50%);
-    width:32px; height:32px; background:#fff; border-radius:50%;
-    display:flex; align-items:center; justify-content:center;
-    left:-14px; box-shadow:0 0 6px rgba(0,0,0,0.4);
-    font-size:16px; user-select:none; pointer-events:none;
-  }}
-  .label-left, .label-right {{
-    position:absolute; bottom:12px; z-index:1000;
-    background:rgba(0,0,0,0.55); color:#fff;
-    font-size:12px; padding:4px 10px; border-radius:4px;
-    font-family:sans-serif; pointer-events:none;
-  }}
-  .label-left  {{ left:12px; }}
-  .label-right {{ right:12px; }}
-  .lc-legend {{
-    position:absolute; bottom:12px; left:50%; transform:translateX(-50%);
-    z-index:1000; background:rgba(255,255,255,0.92);
-    padding:6px 12px; border-radius:6px; font-size:11px;
-    font-family:sans-serif; display:flex; gap:10px;
-    box-shadow:0 1px 4px rgba(0,0,0,0.2);
-  }}
-  .leg-item {{ display:flex; align-items:center; gap:4px; }}
-  .leg-swatch {{ width:12px; height:12px; border-radius:2px; flex-shrink:0; }}
-</style>
-</head>
-<body>
-<div id="map">
-  <div class="label-left">🛰 Satellite</div>
-  <div class="label-right">🗂 Classified</div>
-  <div class="lc-legend">
-    <div class="leg-item"><div class="leg-swatch" style="background:#639922"></div>Green res.</div>
-    <div class="leg-item"><div class="leg-swatch" style="background:#1D9E75"></div>Parkland</div>
-    <div class="leg-item"><div class="leg-swatch" style="background:#888780"></div>Urban</div>
-    <div class="leg-item"><div class="leg-swatch" style="background:#378ADD"></div>Water</div>
-  </div>
-</div>
-<script>
-var map = L.map('map', {{zoomControl:true}}).setView([1.3521, 103.8198], 11);
-
-// Dark base tiles
-L.tileLayer('https://{{s}}.basemaps.cartocdn.com/dark_nolabels/{{z}}/{{x}}/{{y}}{{r}}.png',
-  {{attribution:'CartoDB', maxZoom:18}}).addTo(map);
-
-var imgBounds = [
-  [{sat_bounds.bottom}, {sat_bounds.left}],
-  [{sat_bounds.top},    {sat_bounds.right}]
-];
-
-// Left pane — satellite
-var leftPane  = map.createPane('left');
-var rightPane = map.createPane('right');
-
-var satLayer = L.imageOverlay(
-  'data:image/png;base64,{sat_b64}', imgBounds,
-  {{opacity:1.0, pane:'left'}}
-).addTo(map);
-
-var lcLayer = L.imageOverlay(
-  'data:image/png;base64,{lc_b64}', imgBounds,
-  {{opacity:0.85, pane:'right'}}
-).addTo(map);
-
-// ── Swipe handle ──
-var mapDiv    = document.getElementById('map');
-var handle    = document.createElement('div');
-handle.className = 'swipe-handle';
-var arrow     = document.createElement('div');
-arrow.className = 'swipe-arrow';
-arrow.innerHTML = '⇔';
-handle.appendChild(arrow);
-mapDiv.appendChild(handle);
-
-var mapW = mapDiv.offsetWidth;
-var pos  = mapW / 2;
-
-function setClip(x) {{
-  pos  = Math.max(0, Math.min(mapW, x));
-  var pct = (pos / mapW * 100).toFixed(2);
-  leftPane.style.clip  = 'rect(0px, ' + pos + 'px, 9999px, 0px)';
-  rightPane.style.clip = 'rect(0px, 9999px, 9999px, ' + pos + 'px)';
-  handle.style.left    = pos + 'px';
-}}
-
-// Initialise
-map.whenReady(function() {{
-  mapW = mapDiv.offsetWidth;
-  setClip(mapW / 2);
-}});
-
-// Drag
-var dragging = false;
-handle.addEventListener('mousedown',  function(e) {{ dragging=true; e.preventDefault(); }});
-handle.addEventListener('touchstart', function(e) {{ dragging=true; }}, {{passive:true}});
-document.addEventListener('mouseup',   function() {{ dragging=false; }});
-document.addEventListener('touchend',  function() {{ dragging=false; }});
-document.addEventListener('mousemove', function(e) {{
-  if (!dragging) return;
-  var rect = mapDiv.getBoundingClientRect();
-  setClip(e.clientX - rect.left);
-}});
-document.addEventListener('touchmove', function(e) {{
-  if (!dragging) return;
-  var rect = mapDiv.getBoundingClientRect();
-  setClip(e.touches[0].clientX - rect.left);
-}}, {{passive:true}});
-
-window.addEventListener('resize', function() {{
-  mapW = mapDiv.offsetWidth;
-  setClip(pos);
-}});
-</script>
-</body>
-</html>"""
-
-                st.components.v1.html(swipe_html, height=580, scrolling=False)
-
-        # ════════════════════════════════════════════════════════════════════
-        # MODE B — Standard folium map with boundaries + click stats
-        # ════════════════════════════════════════════════════════════════════
-        else:
-            m = folium.Map(
-                location=[1.3521, 103.8198],
-                zoom_start=11,
-                tiles=None,
+    if b is None:
+        st.error("No raster files found.")
+    else:
+        geojson_str = "{}"
+        if gdf is not None:
+            merged = gdf.merge(
+                df[["PLN_AREA_N","name","region","pct_urban","pct_green_total",
+                    "pct_parkland","pct_green_res","pct_water","pop2020_total"]],
+                on="PLN_AREA_N", how="left",
             )
+            geojson_str = merged.to_json()
 
-            folium.TileLayer(
-                tiles="https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png",
-                attr="CartoDB", name="Base", show=True,
-            ).add_to(m)
+        PA_LOOKUP_JSON = '{"BEDOK": {"name": "Bedok", "region": "East", "pop": "276,990", "pct_urban": 41.0, "pct_green_res": 26.7, "pct_parkland": 25.8, "pct_water": 6.5, "pct_green_total": 52.5}, "BOON LAY": {"name": "Boon Lay", "region": "West", "pop": "40", "pct_urban": 48.6, "pct_green_res": 19.3, "pct_parkland": 19.2, "pct_water": 12.9, "pct_green_total": 38.5}, "BUKIT BATOK": {"name": "Bukit Batok", "region": "West", "pop": "158,030", "pct_urban": 28.6, "pct_green_res": 23.0, "pct_parkland": 46.8, "pct_water": 1.6, "pct_green_total": 69.8}, "BUKIT MERAH": {"name": "Bukit Merah", "region": "Central", "pop": "151,250", "pct_urban": 39.8, "pct_green_res": 21.1, "pct_parkland": 33.3, "pct_water": 5.8, "pct_green_total": 54.4}, "BUKIT PANJANG": {"name": "Bukit Panjang", "region": "West", "pop": "138,270", "pct_urban": 22.0, "pct_green_res": 20.0, "pct_parkland": 56.8, "pct_water": 1.3, "pct_green_total": 76.8}, "BUKIT TIMAH": {"name": "Bukit Timah", "region": "Central", "pop": "77,860", "pct_urban": 24.3, "pct_green_res": 32.6, "pct_parkland": 42.5, "pct_water": 0.6, "pct_green_total": 75.1}, "CENTRAL WATER CATCHMENT": {"name": "Central Water Catchment", "region": "North", "pop": "n/a", "pct_urban": 3.3, "pct_green_res": 4.0, "pct_parkland": 75.5, "pct_water": 17.2, "pct_green_total": 79.5}, "CHANGI": {"name": "Changi", "region": "East", "pop": "1,850", "pct_urban": 40.8, "pct_green_res": 14.4, "pct_parkland": 33.9, "pct_water": 10.9, "pct_green_total": 48.3}, "CHOA CHU KANG": {"name": "Choa Chu Kang", "region": "West", "pop": "192,070", "pct_urban": 43.1, "pct_green_res": 33.8, "pct_parkland": 21.1, "pct_water": 1.9, "pct_green_total": 54.9}, "CLEMENTI": {"name": "Clementi", "region": "West", "pop": "91,990", "pct_urban": 38.5, "pct_green_res": 28.1, "pct_parkland": 28.2, "pct_water": 5.2, "pct_green_total": 56.3}, "HOUGANG": {"name": "Hougang", "region": "North-East", "pop": "227,560", "pct_urban": 44.8, "pct_green_res": 27.4, "pct_parkland": 24.0, "pct_water": 3.8, "pct_green_total": 51.4}, "JURONG EAST": {"name": "Jurong East", "region": "West", "pop": "78,600", "pct_urban": 35.6, "pct_green_res": 19.4, "pct_parkland": 19.6, "pct_water": 25.4, "pct_green_total": 39.0}, "JURONG WEST": {"name": "Jurong West", "region": "West", "pop": "262,730", "pct_urban": 44.9, "pct_green_res": 28.6, "pct_parkland": 22.5, "pct_water": 3.9, "pct_green_total": 51.1}, "PASIR RIS": {"name": "Pasir Ris", "region": "East", "pop": "147,110", "pct_urban": 34.6, "pct_green_res": 20.4, "pct_parkland": 35.6, "pct_water": 9.4, "pct_green_total": 56.0}, "PIONEER": {"name": "Pioneer", "region": "West", "pop": "80", "pct_urban": 53.5, "pct_green_res": 18.9, "pct_parkland": 12.5, "pct_water": 15.1, "pct_green_total": 31.4}, "PUNGGOL": {"name": "Punggol", "region": "North-East", "pop": "174,450", "pct_urban": 28.8, "pct_green_res": 26.6, "pct_parkland": 37.9, "pct_water": 6.7, "pct_green_total": 64.5}, "QUEENSTOWN": {"name": "Queenstown", "region": "Central", "pop": "95,930", "pct_urban": 39.6, "pct_green_res": 18.4, "pct_parkland": 30.8, "pct_water": 11.2, "pct_green_total": 49.2}, "SELETAR": {"name": "Seletar", "region": "North-East", "pop": "300", "pct_urban": 25.9, "pct_green_res": 14.8, "pct_parkland": 50.4, "pct_water": 8.9, "pct_green_total": 65.2}, "SEMBAWANG": {"name": "Sembawang", "region": "North", "pop": "102,640", "pct_urban": 40.7, "pct_green_res": 24.0, "pct_parkland": 28.9, "pct_water": 6.4, "pct_green_total": 52.9}, "SENGKANG": {"name": "Sengkang", "region": "North-East", "pop": "249,370", "pct_urban": 32.9, "pct_green_res": 29.4, "pct_parkland": 34.5, "pct_water": 3.2, "pct_green_total": 63.9}, "SERANGOON": {"name": "Serangoon", "region": "North-East", "pop": "116,900", "pct_urban": 53.7, "pct_green_res": 27.8, "pct_parkland": 15.4, "pct_water": 3.2, "pct_green_total": 43.2}, "KALLANG": {"name": "Kallang", "region": "Central", "pop": "101,290", "pct_urban": 40.7, "pct_green_res": 24.6, "pct_parkland": 22.4, "pct_water": 12.3, "pct_green_total": 47.0}, "LIM CHU KANG": {"name": "Lim Chu Kang", "region": "North", "pop": "110", "pct_urban": 8.8, "pct_green_res": 11.7, "pct_parkland": 69.4, "pct_water": 10.1, "pct_green_total": 81.1}, "NORTH-EASTERN ISLANDS": {"name": "North-Eastern Islands", "region": "North-East", "pop": "50", "pct_urban": 15.4, "pct_green_res": 8.6, "pct_parkland": 53.3, "pct_water": 22.6, "pct_green_total": 61.9}, "NOVENA": {"name": "Novena", "region": "Central", "pop": "49,330", "pct_urban": 26.9, "pct_green_res": 27.9, "pct_parkland": 43.2, "pct_water": 2.0, "pct_green_total": 71.1}, "SIMPANG": {"name": "Simpang", "region": "North", "pop": "n/a", "pct_urban": 2.8, "pct_green_res": 5.6, "pct_parkland": 59.3, "pct_water": 32.3, "pct_green_total": 64.9}, "SOUTHERN ISLANDS": {"name": "Southern Islands", "region": "Central", "pop": "1,940", "pct_urban": 14.5, "pct_green_res": 15.9, "pct_parkland": 52.3, "pct_water": 17.2, "pct_green_total": 68.2}, "SUNGEI KADUT": {"name": "Sungei Kadut", "region": "North", "pop": "750", "pct_urban": 23.2, "pct_green_res": 15.5, "pct_parkland": 46.7, "pct_water": 14.6, "pct_green_total": 62.2}, "TOA PAYOH": {"name": "Toa Payoh", "region": "Central", "pop": "121,850", "pct_urban": 43.8, "pct_green_res": 29.4, "pct_parkland": 24.1, "pct_water": 2.6, "pct_green_total": 53.5}, "TUAS": {"name": "Tuas", "region": "West", "pop": "70", "pct_urban": 43.3, "pct_green_res": 11.6, "pct_parkland": 19.1, "pct_water": 25.9, "pct_green_total": 30.7}, "WESTERN ISLANDS": {"name": "Western Islands", "region": "West", "pop": "10", "pct_urban": 35.3, "pct_green_res": 11.6, "pct_parkland": 33.7, "pct_water": 19.4, "pct_green_total": 45.3}, "WESTERN WATER CATCHMENT": {"name": "Western Water Catchment", "region": "West", "pop": "640", "pct_urban": 10.9, "pct_green_res": 11.4, "pct_parkland": 65.7, "pct_water": 12.0, "pct_green_total": 77.1}, "WOODLANDS": {"name": "Woodlands", "region": "North", "pop": "255,130", "pct_urban": 39.5, "pct_green_res": 30.2, "pct_parkland": 26.2, "pct_water": 4.2, "pct_green_total": 56.4}, "RIVER VALLEY": {"name": "River Valley", "region": "Central", "pop": "10,070", "pct_urban": 33.0, "pct_green_res": 36.3, "pct_parkland": 29.6, "pct_water": 1.1, "pct_green_total": 65.9}, "ROCHOR": {"name": "Rochor", "region": "Central", "pop": "13,120", "pct_urban": 66.1, "pct_green_res": 17.7, "pct_parkland": 9.1, "pct_water": 7.2, "pct_green_total": 26.8}, "SINGAPORE RIVER": {"name": "Singapore River", "region": "Central", "pop": "3,260", "pct_urban": 51.0, "pct_green_res": 21.9, "pct_parkland": 11.7, "pct_water": 15.4, "pct_green_total": 33.6}, "STRAITS VIEW": {"name": "Straits View", "region": "Central", "pop": "n/a", "pct_urban": 9.3, "pct_green_res": 10.8, "pct_parkland": 50.9, "pct_water": 29.0, "pct_green_total": 61.7}, "CHANGI BAY": {"name": "Changi Bay", "region": "East", "pop": "n/a", "pct_urban": 23.6, "pct_green_res": 19.2, "pct_parkland": 51.8, "pct_water": 5.5, "pct_green_total": 71.0}, "MARINE PARADE": {"name": "Marine Parade", "region": "Central", "pop": "46,220", "pct_urban": 37.0, "pct_green_res": 23.7, "pct_parkland": 37.0, "pct_water": 2.3, "pct_green_total": 60.7}, "DOWNTOWN CORE": {"name": "Downtown Core", "region": "Central", "pop": "3,190", "pct_urban": 45.3, "pct_green_res": 16.2, "pct_parkland": 12.7, "pct_water": 25.8, "pct_green_total": 28.9}, "MARINA EAST": {"name": "Marina East", "region": "Central", "pop": "n/a", "pct_urban": 16.8, "pct_green_res": 8.8, "pct_parkland": 51.9, "pct_water": 22.4, "pct_green_total": 60.7}, "MARINA SOUTH": {"name": "Marina South", "region": "Central", "pop": "n/a", "pct_urban": 9.6, "pct_green_res": 16.2, "pct_parkland": 54.9, "pct_water": 19.3, "pct_green_total": 71.1}, "MUSEUM": {"name": "Museum", "region": "Central", "pop": "510", "pct_urban": 33.2, "pct_green_res": 22.1, "pct_parkland": 41.9, "pct_water": 2.7, "pct_green_total": 64.0}, "NEWTON": {"name": "Newton", "region": "Central", "pop": "8,260", "pct_urban": 23.8, "pct_green_res": 28.3, "pct_parkland": 47.1, "pct_water": 0.9, "pct_green_total": 75.4}, "ORCHARD": {"name": "Orchard", "region": "Central", "pop": "920", "pct_urban": 51.5, "pct_green_res": 24.1, "pct_parkland": 14.6, "pct_water": 9.7, "pct_green_total": 38.7}, "OUTRAM": {"name": "Outram", "region": "Central", "pop": "18,340", "pct_urban": 51.3, "pct_green_res": 16.6, "pct_parkland": 26.4, "pct_water": 5.7, "pct_green_total": 43.0}, "TAMPINES": {"name": "Tampines", "region": "East", "pop": "259,900", "pct_urban": 37.8, "pct_green_res": 25.2, "pct_parkland": 32.1, "pct_water": 4.9, "pct_green_total": 57.3}, "TANGLIN": {"name": "Tanglin", "region": "Central", "pop": "21,810", "pct_urban": 17.9, "pct_green_res": 31.6, "pct_parkland": 50.0, "pct_water": 0.4, "pct_green_total": 81.6}, "TENGAH": {"name": "Tengah", "region": "West", "pop": "10", "pct_urban": 28.6, "pct_green_res": 12.5, "pct_parkland": 49.6, "pct_water": 9.2, "pct_green_total": 62.1}, "MANDAI": {"name": "Mandai", "region": "North", "pop": "2,090", "pct_urban": 9.1, "pct_green_res": 10.4, "pct_parkland": 79.9, "pct_water": 0.6, "pct_green_total": 90.3}, "BISHAN": {"name": "Bishan", "region": "Central", "pop": "87,320", "pct_urban": 41.7, "pct_green_res": 24.7, "pct_parkland": 30.4, "pct_water": 3.1, "pct_green_total": 55.1}, "ANG MO KIO": {"name": "Ang Mo Kio", "region": "Central", "pop": "162,280", "pct_urban": 33.3, "pct_green_res": 25.3, "pct_parkland": 38.7, "pct_water": 2.6, "pct_green_total": 64.0}, "GEYLANG": {"name": "Geylang", "region": "Central", "pop": "110,110", "pct_urban": 52.4, "pct_green_res": 27.1, "pct_parkland": 16.7, "pct_water": 3.7, "pct_green_total": 43.8}, "PAYA LEBAR": {"name": "Paya Lebar", "region": "East", "pop": "40", "pct_urban": 21.4, "pct_green_res": 14.1, "pct_parkland": 58.3, "pct_water": 6.1, "pct_green_total": 72.4}, "YISHUN": {"name": "Yishun", "region": "North", "pop": "221,610", "pct_urban": 25.8, "pct_green_res": 19.9, "pct_parkland": 37.1, "pct_water": 17.2, "pct_green_total": 57.0}}'
 
-            # Satellite underneath
-            if has_sat:
-                sat_img = Image.fromarray(sat_rgba, mode="RGBA")
-                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-                    sat_img.save(tmp.name)
-                    folium.raster_layers.ImageOverlay(
-                        image=tmp.name,
-                        bounds=[[sat_bounds.bottom, sat_bounds.left],
-                                [sat_bounds.top,    sat_bounds.right]],
-                        opacity=1.0, name="Satellite image", zindex=1,
-                    ).add_to(m)
+        sat_overlay = (
+            f"var satLayer=L.imageOverlay('data:image/png;base64,{{sat_b64}}',imgBounds,{{opacity:1.0,pane:'leftPane'}}).addTo(map);"
+            if has_sat else "// no satellite"
+        )
+        lc_overlay = (
+            f"var lcLayer=L.imageOverlay('data:image/png;base64,{{lc_b64}}',imgBounds,{{opacity:0.9,pane:'rightPane'}}).addTo(map);"
+            if has_lc else "// no lc"
+        )
+        bounds_js = f"[[{b.bottom},{b.left}],[{b.top},{b.right}]]"
 
-            # Classified raster on top
-            if has_lc:
-                lc_img = Image.fromarray(rgba, mode="RGBA")
-                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-                    lc_img.save(tmp.name)
-                    folium.raster_layers.ImageOverlay(
-                        image=tmp.name,
-                        bounds=[[bounds.bottom, bounds.left],
-                                [bounds.top,    bounds.right]],
-                        opacity=0.75, name="Classified land cover", zindex=2,
-                    ).add_to(m)
-            else:
-                st.info("No classified raster found.")
+        css = (
+            "html,body{margin:0;padding:0;height:100%}"
+            "#map{width:100%;height:600px;position:relative;overflow:hidden}"
+            "#swipe-handle{position:absolute;top:0;bottom:0;width:3px;background:#fff;"
+            "  cursor:ew-resize;z-index:800;box-shadow:0 0 8px rgba(0,0,0,.5);pointer-events:all}"
+            "#swipe-btn{position:absolute;top:50%;transform:translateY(-50%);width:34px;height:34px;"
+            "  background:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;"
+            "  left:-17px;box-shadow:0 0 8px rgba(0,0,0,.35);font-size:15px;user-select:none;pointer-events:none}"
+            ".lbl{position:absolute;bottom:40px;z-index:850;background:rgba(0,0,0,.6);color:#fff;"
+            "  font-size:11px;padding:3px 9px;border-radius:4px;font-family:sans-serif;pointer-events:none}"
+            "#lbl-left{left:10px} #lbl-right{right:10px}"
+            "#legend{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);z-index:850;"
+            "  background:rgba(255,255,255,.93);padding:5px 12px;border-radius:6px;font-size:11px;"
+            "  font-family:sans-serif;display:flex;gap:10px;box-shadow:0 1px 5px rgba(0,0,0,.2);pointer-events:none}"
+            ".li{display:flex;align-items:center;gap:4px}"
+            ".ls{width:11px;height:11px;border-radius:2px;flex-shrink:0}"
+            "#stats-panel{display:none;position:absolute;top:10px;right:10px;z-index:900;"
+            "  background:rgba(255,255,255,.97);border-radius:8px;padding:12px 14px;"
+            "  font-family:sans-serif;font-size:12px;min-width:190px;box-shadow:0 2px 12px rgba(0,0,0,.2)}"
+            "#stats-close{float:right;cursor:pointer;font-size:14px;color:#888;margin-left:8px;line-height:1}"
+            "#stats-title{font-size:14px;font-weight:600;margin-bottom:2px;color:#222}"
+            "#stats-region{color:#888;margin-bottom:8px;font-size:11px}"
+            ".stat-row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #f0f0f0;gap:16px}"
+            ".stat-label{color:#555}.stat-val{font-weight:500;color:#222}"
+            ".sbar{height:6px;border-radius:3px;margin-top:8px;display:flex;overflow:hidden}"
+            ".sbar-seg{height:100%}"
+        )
 
-            # Planning area boundaries
-            if gdf is not None:
-                merged = gdf.merge(
-                    df[["PLN_AREA_N", "name", "region", "pct_urban", "pct_green_total",
-                        "pct_parkland", "pct_green_res", "pct_water", "pop2020_total"]],
-                    on="PLN_AREA_N", how="left",
-                )
-                GeoJson(
-                    merged.__geo_interface__,
-                    name="Planning areas",
-                    style_function=lambda f: {
-                        "fillColor": "transparent", "color": "#ffffff",
-                        "weight": 1.0, "fillOpacity": 0,
-                    },
-                    highlight_function=lambda f: {
-                        "fillColor": "#ffffff", "fillOpacity": 0.2,
-                        "weight": 2.5, "color": "#ffffff",
-                    },
-                    tooltip=GeoJsonTooltip(
-                        fields=["name", "region", "pop2020_total",
-                                "pct_urban", "pct_green_total", "pct_water"],
-                        aliases=["Area", "Region", "Population",
-                                 "% Urban", "% Green (total)", "% Water"],
-                        localize=True, sticky=True,
-                    ),
-                ).add_to(m)
-            else:
-                st.info("No shapefile found.")
+        js = (
+            f"var paData={PA_LOOKUP_JSON};"
+            "var map=L.map('map',{zoomControl:true,dragging:true}).setView([1.3521,103.8198],11);"
+            "L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png',{attribution:'CartoDB',maxZoom:18}).addTo(map);"
+            f"var imgBounds={bounds_js};"
+            "var leftPane=map.createPane('leftPane');var rightPane=map.createPane('rightPane');"
+            "leftPane.style.zIndex=300;rightPane.style.zIndex=350;"
+            + sat_overlay + lc_overlay +
+            f"var geojsonData={geojson_str};"
+            "if(geojsonData&&geojsonData.features){"
+            "L.geoJSON(geojsonData,{"
+            "style:{color:'#ffffff',weight:1.0,fillOpacity:0,opacity:0.6},"
+            "onEachFeature:function(feat,layer){"
+            "layer.on('mouseover',function(){layer.setStyle({fillColor:'#ffffff',fillOpacity:0.15,weight:2})});"
+            "layer.on('mouseout', function(){layer.setStyle({fillColor:'transparent',fillOpacity:0,weight:1})});"
+            "layer.on('click',function(e){"
+            "var pa=feat.properties&&feat.properties.PLN_AREA_N;if(!pa)return;"
+            "var d=paData[pa];if(!d)return;"
+            "document.getElementById('stats-title').textContent=d.name;"
+            "document.getElementById('stats-region').textContent=d.region+' Region';"
+            "var rows=[['Population',d.pop],['% Urban',(d.pct_urban||0)+'%'],['% Green (total)',(d.pct_green_total||0)+'%'],['% Parkland',(d.pct_parkland||0)+'%'],['% Green res.',(d.pct_green_res||0)+'%'],['% Water',(d.pct_water||0)+'%']];"
+            "var html='';rows.forEach(function(r){html+='<div class=\"stat-row\"><span class=\"stat-label\">'+r[0]+'</span><span class=\"stat-val\">'+r[1]+'</span></div>';});"
+            "document.getElementById('stats-rows').innerHTML=html;"
+            "var segs=[[d.pct_green_res,'#639922'],[d.pct_parkland,'#1D9E75'],[d.pct_urban,'#888780'],[d.pct_water,'#378ADD']];"
+            "var bar='';segs.forEach(function(s){bar+='<div class=\"sbar-seg\" style=\"width:'+(s[0]||0)+'%;background:'+s[1]+'\"></div>';});"
+            "document.getElementById('stats-bar').innerHTML=bar;"
+            "document.getElementById('stats-panel').style.display='block';"
+            "L.DomEvent.stopPropagation(e);});}}}).addTo(map);}"
+            "var mapDiv=document.getElementById('map'),handle=document.getElementById('swipe-handle');"
+            "var mapW=mapDiv.offsetWidth,pos=mapW/2,dragging=false;"
+            "function setClip(x){mapW=mapDiv.offsetWidth;pos=Math.max(0,Math.min(mapW,x));"
+            "leftPane.style.clip='rect(0px,'+pos+'px,9999px,0px)';"
+            "rightPane.style.clip='rect(0px,9999px,9999px,'+pos+'px)';"
+            "handle.style.left=pos+'px';}"
+            "map.whenReady(function(){mapW=mapDiv.offsetWidth;setClip(mapW/2);});"
+            "handle.addEventListener('mousedown',function(e){dragging=true;map.dragging.disable();e.preventDefault();e.stopPropagation();});"
+            "handle.addEventListener('touchstart',function(e){dragging=true;map.dragging.disable();e.stopPropagation();},{passive:true});"
+            "document.addEventListener('mouseup',function(){if(dragging){dragging=false;map.dragging.enable();}});"
+            "document.addEventListener('touchend',function(){if(dragging){dragging=false;map.dragging.enable();}});"
+            "document.addEventListener('mousemove',function(e){if(!dragging)return;var r=mapDiv.getBoundingClientRect();setClip(e.clientX-r.left);});"
+            "document.addEventListener('touchmove',function(e){if(!dragging)return;var r=mapDiv.getBoundingClientRect();setClip(e.touches[0].clientX-r.left);},{passive:true});"
+            "window.addEventListener('resize',function(){mapW=mapDiv.offsetWidth;setClip(pos);});"
+        )
 
-            # Legend
-            legend_html = """
-            <div style='position:fixed;bottom:30px;left:30px;z-index:9999;
-                         background:rgba(0,0,0,0.7);color:#fff;
-                         padding:10px 14px;border-radius:8px;
-                         font-size:12px;line-height:1.8'>
-              <b>Land cover</b><br>
-              <span style='color:#639922'>■</span> Green residential<br>
-              <span style='color:#1D9E75'>■</span> Parkland<br>
-              <span style='color:#888780'>■</span> Urban<br>
-              <span style='color:#378ADD'>■</span> Water
-            </div>"""
-            m.get_root().html.add_child(folium.Element(legend_html))
-            folium.LayerControl().add_to(m)
-            map_data = st_folium(m, width="100%", height=580,
-                                 returned_objects=["last_object_clicked_tooltip"])
+        map_html = (
+            "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+            "<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'/>"
+            "<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></" + "script>"
+            f"<style>{css}</style></head><body>"
+            "<div id='map'>"
+            "<div id='swipe-handle'><div id='swipe-btn'>&#8660;</div></div>"
+            "<div class='lbl' id='lbl-left'>&#128752; Satellite</div>"
+            "<div class='lbl' id='lbl-right'>&#128202; Classified</div>"
+            "<div id='legend'>"
+            "<div class='li'><div class='ls' style='background:#639922'></div>Green res.</div>"
+            "<div class='li'><div class='ls' style='background:#1D9E75'></div>Parkland</div>"
+            "<div class='li'><div class='ls' style='background:#888780'></div>Urban</div>"
+            "<div class='li'><div class='ls' style='background:#378ADD'></div>Water</div>"
+            "</div>"
+            "<div id='stats-panel'>"
+            "<span id='stats-close' onclick='this.parentElement.style.display=\"none\"'>&#10005;</span>"
+            "<div id='stats-title'></div><div id='stats-region'></div>"
+            "<div id='stats-rows'></div><div class='sbar' id='stats-bar'></div>"
+            "</div></div>"
+            f"<script>{js}</" + "script>"
+            "</body></html>"
+        )
 
-    # ── Right panel — stats (Mode B only) ──
-    with col_info:
-        if map_mode == "🛰 Satellite + classification swipe":
-            st.subheader("How to use")
-            st.markdown("""
-            **Drag the ⇔ handle** left and right to reveal the satellite image underneath the classification.
-
-            Switch to **Classification + boundaries** mode to click planning areas for detailed stats.
-            """)
+        col_map, col_info = st.columns([3, 1])
+        with col_map:
+            st.components.v1.html(map_html, height=620, scrolling=False)
+        with col_info:
+            st.subheader("Planning area stats")
+            st.caption("Click any planning area on the map.")
             st.divider()
             st.markdown("**Singapore overall**")
             for key, label in LC_LABELS.items():
-                st.metric(label, f"{df[key].mean():.1f}%")
-        else:
-            st.subheader("Planning area stats")
-            clicked = map_data.get("last_object_clicked_tooltip") if map_data else None
-
-            if clicked and "name" in str(clicked):
-                try:
-                    area_name = clicked.get("name", "") if isinstance(clicked, dict) else ""
-                    row = df[df["name"] == area_name]
-                    if not row.empty:
-                        r = row.iloc[0]
-                        st.markdown(f"### {r['name']}")
-                        st.caption(r["region"].title() + " Region")
-                        pop = int(r["pop2020_total"]) if pd.notna(r["pop2020_total"]) else None
-                        st.metric("Population",      f"{pop:,}" if pop else "n/a")
-                        st.metric("% Urban",         f"{r['pct_urban']:.1f}%")
-                        st.metric("% Green (total)", f"{r['pct_green_total']:.1f}%")
-                        st.metric("% Parkland",      f"{r['pct_parkland']:.1f}%")
-                        st.metric("% Water",         f"{r['pct_water']:.1f}%")
-                        fig_mini = go.Figure(go.Bar(
-                            x=[r["pct_green_res"]], y=[""],
-                            orientation="h", name="Green res.", marker_color="#639922",
-                        ))
-                        for key, label, color in [
-                            ("pct_parkland", "Parkland", "#1D9E75"),
-                            ("pct_urban",    "Urban",    "#888780"),
-                            ("pct_water",    "Water",    "#378ADD"),
-                        ]:
-                            fig_mini.add_trace(go.Bar(
-                                x=[r[key]], y=[""], orientation="h",
-                                name=label, marker_color=color,
-                            ))
-                        fig_mini.update_layout(
-                            barmode="stack", height=60,
-                            margin=dict(l=0, r=0, t=0, b=0),
-                            showlegend=False,
-                            xaxis=dict(range=[0, 100], showticklabels=False),
-                            plot_bgcolor="rgba(0,0,0,0)",
-                            paper_bgcolor="rgba(0,0,0,0)",
-                        )
-                        st.plotly_chart(fig_mini, use_container_width=True)
-                except Exception:
-                    pass
-            else:
-                st.caption("Click a planning area on the map to see its statistics here.")
-                st.divider()
-                st.markdown("**Singapore overall**")
-                for key, label in LC_LABELS.items():
-                    st.metric(label, f"{df[key].mean():.1f}%")
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# PAGE 2 — GREEN VS URBAN
+                st.metric(label, f"{df[key].mean():.1f}%")# PAGE 2 — GREEN VS URBAN
 # ══════════════════════════════════════════════════════════════════════════════
 elif page == "🌿 Green vs Urban":
     st.title("Green spaces vs urban cover")
@@ -922,4 +740,186 @@ elif page == "💰 Income":
         height=400, margin=dict(t=20, b=40),
         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
     )
-    st.plotly_chart(fig_sc, use_container_width=True)
+    st.plotly_chart(fig_sc, use_container_width=True)# ==============================================================================
+# PAGE 1 — MAP
+# ==============================================================================
+if page == "🗺️ Map":
+    st.title("Land cover map")
+    st.caption("Drag the ⇔ handle to swipe between satellite and classification. Click a planning area for stats.")
+
+    sat_rgba, sat_bounds = load_satellite_preview()
+    rgba, bounds         = load_raster_preview()
+
+    import base64, io, json as _json
+
+    def img_to_b64(arr):
+        buf = io.BytesIO()
+        Image.fromarray(arr, mode="RGBA").save(buf, format="PNG")
+        return base64.b64encode(buf.getvalue()).decode()
+
+    has_sat = sat_rgba is not None
+    has_lc  = rgba is not None
+
+    if not has_sat: st.warning("Satellite image not found — swipe will show classification only.")
+    if not has_lc:  st.warning("Classified raster not found.")
+
+    sat_b64 = img_to_b64(sat_rgba) if has_sat else ""
+    lc_b64  = img_to_b64(rgba)     if has_lc  else ""
+    b       = bounds if has_lc else (sat_bounds if has_sat else None)
+
+    if b is None:
+        st.error("No raster files found.")
+    else:
+        geojson_str = "{}"
+        if gdf is not None:
+            merged = gdf.merge(
+                df[["PLN_AREA_N","name","region","pct_urban","pct_green_total",
+                    "pct_parkland","pct_green_res","pct_water","pop2020_total"]],
+                on="PLN_AREA_N", how="left",
+            )
+            geojson_str = merged.to_json()
+
+        PA_LOOKUP_JSON = '{"BEDOK": {"name": "Bedok", "region": "East", "pop": "276,990", "pct_urban": 41.0, "pct_green_res": 26.7, "pct_parkland": 25.8, "pct_water": 6.5, "pct_green_total": 52.5}, "BOON LAY": {"name": "Boon Lay", "region": "West", "pop": "40", "pct_urban": 48.6, "pct_green_res": 19.3, "pct_parkland": 19.2, "pct_water": 12.9, "pct_green_total": 38.5}, "BUKIT BATOK": {"name": "Bukit Batok", "region": "West", "pop": "158,030", "pct_urban": 28.6, "pct_green_res": 23.0, "pct_parkland": 46.8, "pct_water": 1.6, "pct_green_total": 69.8}, "BUKIT MERAH": {"name": "Bukit Merah", "region": "Central", "pop": "151,250", "pct_urban": 39.8, "pct_green_res": 21.1, "pct_parkland": 33.3, "pct_water": 5.8, "pct_green_total": 54.4}, "BUKIT PANJANG": {"name": "Bukit Panjang", "region": "West", "pop": "138,270", "pct_urban": 22.0, "pct_green_res": 20.0, "pct_parkland": 56.8, "pct_water": 1.3, "pct_green_total": 76.8}, "BUKIT TIMAH": {"name": "Bukit Timah", "region": "Central", "pop": "77,860", "pct_urban": 24.3, "pct_green_res": 32.6, "pct_parkland": 42.5, "pct_water": 0.6, "pct_green_total": 75.1}, "CENTRAL WATER CATCHMENT": {"name": "Central Water Catchment", "region": "North", "pop": "n/a", "pct_urban": 3.3, "pct_green_res": 4.0, "pct_parkland": 75.5, "pct_water": 17.2, "pct_green_total": 79.5}, "CHANGI": {"name": "Changi", "region": "East", "pop": "1,850", "pct_urban": 40.8, "pct_green_res": 14.4, "pct_parkland": 33.9, "pct_water": 10.9, "pct_green_total": 48.3}, "CHOA CHU KANG": {"name": "Choa Chu Kang", "region": "West", "pop": "192,070", "pct_urban": 43.1, "pct_green_res": 33.8, "pct_parkland": 21.1, "pct_water": 1.9, "pct_green_total": 54.9}, "CLEMENTI": {"name": "Clementi", "region": "West", "pop": "91,990", "pct_urban": 38.5, "pct_green_res": 28.1, "pct_parkland": 28.2, "pct_water": 5.2, "pct_green_total": 56.3}, "HOUGANG": {"name": "Hougang", "region": "North-East", "pop": "227,560", "pct_urban": 44.8, "pct_green_res": 27.4, "pct_parkland": 24.0, "pct_water": 3.8, "pct_green_total": 51.4}, "JURONG EAST": {"name": "Jurong East", "region": "West", "pop": "78,600", "pct_urban": 35.6, "pct_green_res": 19.4, "pct_parkland": 19.6, "pct_water": 25.4, "pct_green_total": 39.0}, "JURONG WEST": {"name": "Jurong West", "region": "West", "pop": "262,730", "pct_urban": 44.9, "pct_green_res": 28.6, "pct_parkland": 22.5, "pct_water": 3.9, "pct_green_total": 51.1}, "PASIR RIS": {"name": "Pasir Ris", "region": "East", "pop": "147,110", "pct_urban": 34.6, "pct_green_res": 20.4, "pct_parkland": 35.6, "pct_water": 9.4, "pct_green_total": 56.0}, "PIONEER": {"name": "Pioneer", "region": "West", "pop": "80", "pct_urban": 53.5, "pct_green_res": 18.9, "pct_parkland": 12.5, "pct_water": 15.1, "pct_green_total": 31.4}, "PUNGGOL": {"name": "Punggol", "region": "North-East", "pop": "174,450", "pct_urban": 28.8, "pct_green_res": 26.6, "pct_parkland": 37.9, "pct_water": 6.7, "pct_green_total": 64.5}, "QUEENSTOWN": {"name": "Queenstown", "region": "Central", "pop": "95,930", "pct_urban": 39.6, "pct_green_res": 18.4, "pct_parkland": 30.8, "pct_water": 11.2, "pct_green_total": 49.2}, "SELETAR": {"name": "Seletar", "region": "North-East", "pop": "300", "pct_urban": 25.9, "pct_green_res": 14.8, "pct_parkland": 50.4, "pct_water": 8.9, "pct_green_total": 65.2}, "SEMBAWANG": {"name": "Sembawang", "region": "North", "pop": "102,640", "pct_urban": 40.7, "pct_green_res": 24.0, "pct_parkland": 28.9, "pct_water": 6.4, "pct_green_total": 52.9}, "SENGKANG": {"name": "Sengkang", "region": "North-East", "pop": "249,370", "pct_urban": 32.9, "pct_green_res": 29.4, "pct_parkland": 34.5, "pct_water": 3.2, "pct_green_total": 63.9}, "SERANGOON": {"name": "Serangoon", "region": "North-East", "pop": "116,900", "pct_urban": 53.7, "pct_green_res": 27.8, "pct_parkland": 15.4, "pct_water": 3.2, "pct_green_total": 43.2}, "KALLANG": {"name": "Kallang", "region": "Central", "pop": "101,290", "pct_urban": 40.7, "pct_green_res": 24.6, "pct_parkland": 22.4, "pct_water": 12.3, "pct_green_total": 47.0}, "LIM CHU KANG": {"name": "Lim Chu Kang", "region": "North", "pop": "110", "pct_urban": 8.8, "pct_green_res": 11.7, "pct_parkland": 69.4, "pct_water": 10.1, "pct_green_total": 81.1}, "NORTH-EASTERN ISLANDS": {"name": "North-Eastern Islands", "region": "North-East", "pop": "50", "pct_urban": 15.4, "pct_green_res": 8.6, "pct_parkland": 53.3, "pct_water": 22.6, "pct_green_total": 61.9}, "NOVENA": {"name": "Novena", "region": "Central", "pop": "49,330", "pct_urban": 26.9, "pct_green_res": 27.9, "pct_parkland": 43.2, "pct_water": 2.0, "pct_green_total": 71.1}, "SIMPANG": {"name": "Simpang", "region": "North", "pop": "n/a", "pct_urban": 2.8, "pct_green_res": 5.6, "pct_parkland": 59.3, "pct_water": 32.3, "pct_green_total": 64.9}, "SOUTHERN ISLANDS": {"name": "Southern Islands", "region": "Central", "pop": "1,940", "pct_urban": 14.5, "pct_green_res": 15.9, "pct_parkland": 52.3, "pct_water": 17.2, "pct_green_total": 68.2}, "SUNGEI KADUT": {"name": "Sungei Kadut", "region": "North", "pop": "750", "pct_urban": 23.2, "pct_green_res": 15.5, "pct_parkland": 46.7, "pct_water": 14.6, "pct_green_total": 62.2}, "TOA PAYOH": {"name": "Toa Payoh", "region": "Central", "pop": "121,850", "pct_urban": 43.8, "pct_green_res": 29.4, "pct_parkland": 24.1, "pct_water": 2.6, "pct_green_total": 53.5}, "TUAS": {"name": "Tuas", "region": "West", "pop": "70", "pct_urban": 43.3, "pct_green_res": 11.6, "pct_parkland": 19.1, "pct_water": 25.9, "pct_green_total": 30.7}, "WESTERN ISLANDS": {"name": "Western Islands", "region": "West", "pop": "10", "pct_urban": 35.3, "pct_green_res": 11.6, "pct_parkland": 33.7, "pct_water": 19.4, "pct_green_total": 45.3}, "WESTERN WATER CATCHMENT": {"name": "Western Water Catchment", "region": "West", "pop": "640", "pct_urban": 10.9, "pct_green_res": 11.4, "pct_parkland": 65.7, "pct_water": 12.0, "pct_green_total": 77.1}, "WOODLANDS": {"name": "Woodlands", "region": "North", "pop": "255,130", "pct_urban": 39.5, "pct_green_res": 30.2, "pct_parkland": 26.2, "pct_water": 4.2, "pct_green_total": 56.4}, "RIVER VALLEY": {"name": "River Valley", "region": "Central", "pop": "10,070", "pct_urban": 33.0, "pct_green_res": 36.3, "pct_parkland": 29.6, "pct_water": 1.1, "pct_green_total": 65.9}, "ROCHOR": {"name": "Rochor", "region": "Central", "pop": "13,120", "pct_urban": 66.1, "pct_green_res": 17.7, "pct_parkland": 9.1, "pct_water": 7.2, "pct_green_total": 26.8}, "SINGAPORE RIVER": {"name": "Singapore River", "region": "Central", "pop": "3,260", "pct_urban": 51.0, "pct_green_res": 21.9, "pct_parkland": 11.7, "pct_water": 15.4, "pct_green_total": 33.6}, "STRAITS VIEW": {"name": "Straits View", "region": "Central", "pop": "n/a", "pct_urban": 9.3, "pct_green_res": 10.8, "pct_parkland": 50.9, "pct_water": 29.0, "pct_green_total": 61.7}, "CHANGI BAY": {"name": "Changi Bay", "region": "East", "pop": "n/a", "pct_urban": 23.6, "pct_green_res": 19.2, "pct_parkland": 51.8, "pct_water": 5.5, "pct_green_total": 71.0}, "MARINE PARADE": {"name": "Marine Parade", "region": "Central", "pop": "46,220", "pct_urban": 37.0, "pct_green_res": 23.7, "pct_parkland": 37.0, "pct_water": 2.3, "pct_green_total": 60.7}, "DOWNTOWN CORE": {"name": "Downtown Core", "region": "Central", "pop": "3,190", "pct_urban": 45.3, "pct_green_res": 16.2, "pct_parkland": 12.7, "pct_water": 25.8, "pct_green_total": 28.9}, "MARINA EAST": {"name": "Marina East", "region": "Central", "pop": "n/a", "pct_urban": 16.8, "pct_green_res": 8.8, "pct_parkland": 51.9, "pct_water": 22.4, "pct_green_total": 60.7}, "MARINA SOUTH": {"name": "Marina South", "region": "Central", "pop": "n/a", "pct_urban": 9.6, "pct_green_res": 16.2, "pct_parkland": 54.9, "pct_water": 19.3, "pct_green_total": 71.1}, "MUSEUM": {"name": "Museum", "region": "Central", "pop": "510", "pct_urban": 33.2, "pct_green_res": 22.1, "pct_parkland": 41.9, "pct_water": 2.7, "pct_green_total": 64.0}, "NEWTON": {"name": "Newton", "region": "Central", "pop": "8,260", "pct_urban": 23.8, "pct_green_res": 28.3, "pct_parkland": 47.1, "pct_water": 0.9, "pct_green_total": 75.4}, "ORCHARD": {"name": "Orchard", "region": "Central", "pop": "920", "pct_urban": 51.5, "pct_green_res": 24.1, "pct_parkland": 14.6, "pct_water": 9.7, "pct_green_total": 38.7}, "OUTRAM": {"name": "Outram", "region": "Central", "pop": "18,340", "pct_urban": 51.3, "pct_green_res": 16.6, "pct_parkland": 26.4, "pct_water": 5.7, "pct_green_total": 43.0}, "TAMPINES": {"name": "Tampines", "region": "East", "pop": "259,900", "pct_urban": 37.8, "pct_green_res": 25.2, "pct_parkland": 32.1, "pct_water": 4.9, "pct_green_total": 57.3}, "TANGLIN": {"name": "Tanglin", "region": "Central", "pop": "21,810", "pct_urban": 17.9, "pct_green_res": 31.6, "pct_parkland": 50.0, "pct_water": 0.4, "pct_green_total": 81.6}, "TENGAH": {"name": "Tengah", "region": "West", "pop": "10", "pct_urban": 28.6, "pct_green_res": 12.5, "pct_parkland": 49.6, "pct_water": 9.2, "pct_green_total": 62.1}, "MANDAI": {"name": "Mandai", "region": "North", "pop": "2,090", "pct_urban": 9.1, "pct_green_res": 10.4, "pct_parkland": 79.9, "pct_water": 0.6, "pct_green_total": 90.3}, "BISHAN": {"name": "Bishan", "region": "Central", "pop": "87,320", "pct_urban": 41.7, "pct_green_res": 24.7, "pct_parkland": 30.4, "pct_water": 3.1, "pct_green_total": 55.1}, "ANG MO KIO": {"name": "Ang Mo Kio", "region": "Central", "pop": "162,280", "pct_urban": 33.3, "pct_green_res": 25.3, "pct_parkland": 38.7, "pct_water": 2.6, "pct_green_total": 64.0}, "GEYLANG": {"name": "Geylang", "region": "Central", "pop": "110,110", "pct_urban": 52.4, "pct_green_res": 27.1, "pct_parkland": 16.7, "pct_water": 3.7, "pct_green_total": 43.8}, "PAYA LEBAR": {"name": "Paya Lebar", "region": "East", "pop": "40", "pct_urban": 21.4, "pct_green_res": 14.1, "pct_parkland": 58.3, "pct_water": 6.1, "pct_green_total": 72.4}, "YISHUN": {"name": "Yishun", "region": "North", "pop": "221,610", "pct_urban": 25.8, "pct_green_res": 19.9, "pct_parkland": 37.1, "pct_water": 17.2, "pct_green_total": 57.0}}'
+
+        sat_overlay = (
+            f"var satLayer=L.imageOverlay('data:image/png;base64,{sat_b64}',"
+            f"imgBounds,{{opacity:1.0,pane:'leftPane'}}).addTo(map);"
+            if has_sat else "// no satellite"
+        )
+        lc_overlay = (
+            f"var lcLayer=L.imageOverlay('data:image/png;base64,{lc_b64}',"
+            f"imgBounds,{{opacity:0.9,pane:'rightPane'}}).addTo(map);"
+            if has_lc else "// no lc"
+        )
+
+        css = """
+html,body{margin:0;padding:0;height:100%}
+#map{width:100%;height:600px;position:relative;overflow:hidden}
+#swipe-handle{position:absolute;top:0;bottom:0;width:3px;background:#fff;
+  cursor:ew-resize;z-index:800;box-shadow:0 0 8px rgba(0,0,0,.5);pointer-events:all}
+#swipe-btn{position:absolute;top:50%;transform:translateY(-50%);width:34px;height:34px;
+  background:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  left:-17px;box-shadow:0 0 8px rgba(0,0,0,.35);font-size:15px;
+  user-select:none;pointer-events:none}
+.lbl{position:absolute;bottom:40px;z-index:850;background:rgba(0,0,0,.6);color:#fff;
+  font-size:11px;padding:3px 9px;border-radius:4px;font-family:sans-serif;pointer-events:none}
+#lbl-left{left:10px} #lbl-right{right:10px}
+#legend{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);z-index:850;
+  background:rgba(255,255,255,.93);padding:5px 12px;border-radius:6px;font-size:11px;
+  font-family:sans-serif;display:flex;gap:10px;box-shadow:0 1px 5px rgba(0,0,0,.2);pointer-events:none}
+.li{display:flex;align-items:center;gap:4px}
+.ls{width:11px;height:11px;border-radius:2px;flex-shrink:0}
+#stats-panel{display:none;position:absolute;top:10px;right:10px;z-index:900;
+  background:rgba(255,255,255,.97);border-radius:8px;padding:12px 14px;
+  font-family:sans-serif;font-size:12px;min-width:190px;
+  box-shadow:0 2px 12px rgba(0,0,0,.2)}
+#stats-close{float:right;cursor:pointer;font-size:14px;color:#888;margin-left:8px;line-height:1}
+#stats-title{font-size:14px;font-weight:600;margin-bottom:2px;color:#222}
+#stats-region{color:#888;margin-bottom:8px;font-size:11px}
+.stat-row{display:flex;justify-content:space-between;padding:3px 0;
+  border-bottom:1px solid #f0f0f0;gap:16px}
+.stat-label{color:#555}.stat-val{font-weight:500;color:#222}
+.sbar{height:6px;border-radius:3px;margin-top:8px;display:flex;overflow:hidden}
+.sbar-seg{height:100%}
+"""
+
+        js = """
+var paData = """ + PA_LOOKUP_JSON + """;
+var map = L.map('map',{zoomControl:true,dragging:true}).setView([1.3521,103.8198],11);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png',
+  {attribution:'CartoDB',maxZoom:18}).addTo(map);
+var imgBounds = """ + f"[[{b.bottom},{b.left}],[{b.top},{b.right}]]" + """;
+var leftPane  = map.createPane('leftPane');
+var rightPane = map.createPane('rightPane');
+leftPane.style.zIndex=300; rightPane.style.zIndex=350;
+""" + sat_overlay + """
+""" + lc_overlay  + """
+var geojsonData = """ + geojson_str + """;
+if(geojsonData&&geojsonData.features){
+  L.geoJSON(geojsonData,{
+    style:{color:'#ffffff',weight:1.0,fillOpacity:0,opacity:0.6},
+    onEachFeature:function(feat,layer){
+      layer.on('mouseover',function(){layer.setStyle({fillColor:'#ffffff',fillOpacity:0.15,weight:2})});
+      layer.on('mouseout', function(){layer.setStyle({fillColor:'transparent',fillOpacity:0,weight:1})});
+      layer.on('click',function(e){
+        var pa=feat.properties&&feat.properties.PLN_AREA_N;
+        if(!pa)return;
+        var d=paData[pa];
+        if(!d)return;
+        document.getElementById('stats-title').textContent=d.name;
+        document.getElementById('stats-region').textContent=d.region+' Region';
+        var rows=[
+          ['Population',d.pop],['% Urban',(d.pct_urban||0)+'%'],
+          ['% Green (total)',(d.pct_green_total||0)+'%'],['% Parkland',(d.pct_parkland||0)+'%'],
+          ['% Green res.',(d.pct_green_res||0)+'%'],['% Water',(d.pct_water||0)+'%'],
+        ];
+        var html='';
+        rows.forEach(function(r){html+='<div class="stat-row"><span class="stat-label">'+r[0]+'</span><span class="stat-val">'+r[1]+'</span></div>';});
+        document.getElementById('stats-rows').innerHTML=html;
+        var segs=[[d.pct_green_res,'#639922'],[d.pct_parkland,'#1D9E75'],[d.pct_urban,'#888780'],[d.pct_water,'#378ADD']];
+        var bar='';
+        segs.forEach(function(s){bar+='<div class="sbar-seg" style="width:'+(s[0]||0)+'%;background:'+s[1]+'"></div>';});
+        document.getElementById('stats-bar').innerHTML=bar;
+        document.getElementById('stats-panel').style.display='block';
+        L.DomEvent.stopPropagation(e);
+      });
+    }
+  }).addTo(map);
+}
+var mapDiv=document.getElementById('map');
+var handle=document.getElementById('swipe-handle');
+var mapW=mapDiv.offsetWidth,pos=mapW/2,dragging=false;
+function setClip(x){
+  mapW=mapDiv.offsetWidth;
+  pos=Math.max(0,Math.min(mapW,x));
+  leftPane.style.clip='rect(0px,'+pos+'px,9999px,0px)';
+  rightPane.style.clip='rect(0px,9999px,9999px,'+pos+'px)';
+  handle.style.left=pos+'px';
+}
+map.whenReady(function(){mapW=mapDiv.offsetWidth;setClip(mapW/2);});
+handle.addEventListener('mousedown',function(e){dragging=true;map.dragging.disable();e.preventDefault();e.stopPropagation();});
+handle.addEventListener('touchstart',function(e){dragging=true;map.dragging.disable();e.stopPropagation();},{passive:true});
+document.addEventListener('mouseup',  function(){if(dragging){dragging=false;map.dragging.enable();}});
+document.addEventListener('touchend', function(){if(dragging){dragging=false;map.dragging.enable();}});
+document.addEventListener('mousemove',function(e){if(!dragging)return;var r=mapDiv.getBoundingClientRect();setClip(e.clientX-r.left);});
+document.addEventListener('touchmove',function(e){if(!dragging)return;var r=mapDiv.getBoundingClientRect();setClip(e.touches[0].clientX-r.left);},{passive:true});
+window.addEventListener('resize',function(){mapW=mapDiv.offsetWidth;setClip(pos);});
+"""
+
+        map_html = (
+            "<!DOCTYPE html><html><head><meta charset='utf-8'>"
+            "<link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'/>"
+            "<script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>"
+            f"<style>{css}</style></head><body>"
+            "<div id='map'>"
+            "  <div id='swipe-handle'><div id='swipe-btn'>&#8660;</div></div>"
+            "  <div class='lbl' id='lbl-left'>&#128752; Satellite</div>"
+            "  <div class='lbl' id='lbl-right'>&#128202; Classified</div>"
+            "  <div id='legend'>"
+            "    <div class='li'><div class='ls' style='background:#639922'></div>Green res.</div>"
+            "    <div class='li'><div class='ls' style='background:#1D9E75'></div>Parkland</div>"
+            "    <div class='li'><div class='ls' style='background:#888780'></div>Urban</div>"
+            "    <div class='li'><div class='ls' style='background:#378ADD'></div>Water</div>"
+            "  </div>"
+            "  <div id='stats-panel'>"
+            "    <span id='stats-close' onclick='this.parentElement.style.display=\"none\"'>&#10005;</span>"
+            "    <div id='stats-title'></div>"
+            "    <div id='stats-region'></div>"
+            "    <div id='stats-rows'></div>"
+            "    <div class='sbar' id='stats-bar'></div>"
+            "  </div>"
+            "</div>"
+            f"<script>{js}</script>"
+            "</body></html>"
+        )
+
+        col_map, col_info = st.columns([3, 1])
+        with col_map:
+            st.components.v1.html(map_html, height=620, scrolling=False)
+        with col_info:
+            st.subheader("Planning area stats")
+            st.caption("Click any planning area on the map.")
+            st.divider()
+            st.markdown("**Singapore overall**")
+            for key, label in LC_LABELS.items():
+                st.metric(label, f"{df[key].mean():.1f}%")
