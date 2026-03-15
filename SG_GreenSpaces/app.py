@@ -1219,64 +1219,93 @@ elif page == "⚖️ Compare":
     if not has_inc_a and not has_inc_b:
         st.info("Neither planning area has income data (GHS 2015 covers residential areas only).")
     else:
-        cl3, cr3 = st.columns(2)
-
         def income_pcts(row):
             vals  = [safe(row[k]) for k in inc_keys]
             total = sum(vals) or 1
             return [v / total * 100 for v in vals]
 
+        if not has_inc_a:
+            st.caption(f"⚠ No income data for {pa_a} — showing {pa_b} only")
+        if not has_inc_b:
+            st.caption(f"⚠ No income data for {pa_b} — showing {pa_a} only")
+
+        cl3, cr3 = st.columns([3, 2])
+
         with cl3:
+            # Grouped bar — side-by-side per bracket, easy to compare adjacent bars
             fig_inc = go.Figure()
             if has_inc_a:
                 fig_inc.add_trace(go.Bar(
                     name=pa_a, x=inc_labels,
                     y=income_pcts(ra),
                     marker_color="#639922", opacity=0.85,
+                    hovertemplate="%{x}: %{y:.1f}%<extra>" + pa_a + "</extra>",
                 ))
             if has_inc_b:
                 fig_inc.add_trace(go.Bar(
                     name=pa_b, x=inc_labels,
                     y=income_pcts(rb),
                     marker_color="#378ADD", opacity=0.85,
+                    hovertemplate="%{x}: %{y:.1f}%<extra>" + pa_b + "</extra>",
                 ))
             fig_inc.update_layout(
-                barmode="group", height=300,
-                margin=dict(t=10, b=30, l=0, r=0),
+                barmode="group", height=320,
+                margin=dict(t=10, b=40, l=0, r=0),
                 yaxis_title="% of workers",
                 xaxis_tickangle=-30,
                 legend=dict(orientation="h", y=1.08),
                 plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
             )
             st.plotly_chart(fig_inc, use_container_width=True)
-            if not has_inc_a:
-                st.caption(f"⚠ No income data for {pa_a}")
-            if not has_inc_b:
-                st.caption(f"⚠ No income data for {pa_b}")
 
         with cr3:
-            radar_inc = go.Figure()
-            if has_inc_a:
-                radar_inc.add_trace(go.Scatterpolar(
-                    r=income_pcts(ra) + [income_pcts(ra)[0]],
-                    theta=inc_labels + [inc_labels[0]],
-                    fill="toself", name=pa_a,
-                    line_color="#639922", fillcolor="rgba(99,153,34,0.2)",
+            # Diverging bar — shows A minus B directly, zero line at centre
+            # Immediately shows which area skews higher/lower income
+            if has_inc_a and has_inc_b:
+                pcts_a = income_pcts(ra)
+                pcts_b = income_pcts(rb)
+                diffs  = [a - b for a, b in zip(pcts_a, pcts_b)]
+                colors = ["#639922" if d >= 0 else "#378ADD" for d in diffs]
+                abs_max = max(abs(d) for d in diffs) * 1.3 or 1
+
+                fig_div = go.Figure()
+                fig_div.add_trace(go.Bar(
+                    y=inc_labels,
+                    x=diffs,
+                    orientation="h",
+                    marker_color=colors,
+                    hovertemplate="%{y}: %{x:+.1f}pp<extra></extra>",
                 ))
-            if has_inc_b:
-                radar_inc.add_trace(go.Scatterpolar(
-                    r=income_pcts(rb) + [income_pcts(rb)[0]],
-                    theta=inc_labels + [inc_labels[0]],
-                    fill="toself", name=pa_b,
-                    line_color="#378ADD", fillcolor="rgba(55,138,221,0.2)",
-                ))
-            radar_inc.update_layout(
-                polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
-                height=300, margin=dict(t=30, b=10, l=30, r=30),
-                legend=dict(orientation="h", y=1.12),
-                paper_bgcolor="rgba(0,0,0,0)",
-            )
-            st.plotly_chart(radar_inc, use_container_width=True)
+                fig_div.add_vline(x=0, line_width=1,
+                                  line_color="rgba(128,128,128,0.4)")
+                fig_div.update_layout(
+                    height=320,
+                    margin=dict(t=30, b=40, l=0, r=10),
+                    xaxis=dict(
+                        title="pp difference (A − B)",
+                        range=[-abs_max, abs_max],
+                        ticksuffix="pp",
+                        zeroline=False,
+                    ),
+                    yaxis=dict(title=""),
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    showlegend=False,
+                )
+                # Annotations for area labels on each side
+                fig_div.add_annotation(
+                    x=-abs_max, y=1.07, xref="x", yref="paper",
+                    text=f"← {pa_b} higher", showarrow=False,
+                    font=dict(size=10, color="#378ADD"), xanchor="left",
+                )
+                fig_div.add_annotation(
+                    x=abs_max, y=1.07, xref="x", yref="paper",
+                    text=f"{pa_a} higher →", showarrow=False,
+                    font=dict(size=10, color="#639922"), xanchor="right",
+                )
+                st.plotly_chart(fig_div, use_container_width=True)
+            else:
+                st.caption("Diverging chart requires both areas to have income data.")
 
     # ── Row 4: Population size visual ──────────────────────────────────────────
     st.divider()
