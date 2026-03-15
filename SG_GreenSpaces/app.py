@@ -951,11 +951,12 @@ elif page == "⚖️ Compare":
         )
         st.plotly_chart(radar_lc, use_container_width=True)
 
-    # ── Row 2: Population pyramid + radar ─────────────────────────────────────
+    # ── Row 2: Overlaid population pyramid (% of population) ──────────────────
     st.divider()
     st.subheader("Age & sex profile")
+    st.caption("Both areas normalised to % of their own population — directly comparable regardless of size. "
+               f"Males left · Females right · {pa_a} filled · {pa_b} outlined.")
 
-    # 5-year band definitions
     age_bands  = ["0_4","5_9","10_14","15_19","20_24","25_29","30_34","35_39",
                   "40_44","45_49","50_54","55_59","60_64","65_69","70_74",
                   "75_79","80_84","85_89","90andOver"]
@@ -963,83 +964,74 @@ elif page == "⚖️ Compare":
                       "40–44","45–49","50–54","55–59","60–64","65–69","70–74",
                       "75–79","80–84","85–89","90+"]
 
-    def pyr_vals(row, sex):
-        """Return counts for each 5-year band for given sex (Males/Females)."""
-        vals = []
-        for b in age_bands:
-            col = f"pop2020_{'m' if sex == 'male' else 'f'}_{b}"
-            vals.append(safe(row.get(col, 0)))
-        return vals
+    def pyr_pct(row, sex):
+        """Return each band as % of total population."""
+        total = max(safe(row.get("pop2020_total", 0)), 1)
+        prefix = "m" if sex == "male" else "f"
+        return [safe(row.get(f"pop2020_{prefix}_{b}", 0)) / total * 100
+                for b in age_bands]
 
-    cl2, cr2 = st.columns(2)
+    # Build overlaid pyramid — Area A filled, Area B outlined
+    fig_pyr = go.Figure()
 
-    with cl2:
-        # Butterfly pyramid — males left (negative), females right (positive)
-        fig_pyr = go.Figure()
-        fig_pyr.add_trace(go.Bar(
-            name="Male", y=age_labels_pyr,
-            x=[-v for v in pyr_vals(ra, "male")],
-            orientation="h", marker_color="#534AB7", opacity=0.85,
-            hovertemplate="%{customdata:,}<extra>Male</extra>",
-            customdata=pyr_vals(ra, "male"),
-        ))
-        fig_pyr.add_trace(go.Bar(
-            name="Female", y=age_labels_pyr,
-            x=pyr_vals(ra, "female"),
-            orientation="h", marker_color="#D4537E", opacity=0.85,
-            hovertemplate="%{x:,}<extra>Female</extra>",
-        ))
-        max_val = max(max(pyr_vals(ra, "male")), max(pyr_vals(ra, "female")), 1)
-        fig_pyr.update_layout(
-            title=dict(text=pa_a, font=dict(size=13)),
-            barmode="overlay",
-            height=420,
-            margin=dict(t=30, b=10, l=10, r=10),
-            xaxis=dict(
-                tickvals=[-max_val, -max_val//2, 0, max_val//2, max_val],
-                ticktext=[f"{max_val:,}", f"{max_val//2:,}", "0",
-                          f"{max_val//2:,}", f"{max_val:,}"],
-                title="Population",
-            ),
-            legend=dict(orientation="h", y=1.05),
-            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-        )
-        st.plotly_chart(fig_pyr, use_container_width=True)
+    # Area A — filled bars, males left
+    m_a = pyr_pct(ra, "male")
+    f_a = pyr_pct(ra, "female")
+    fig_pyr.add_trace(go.Bar(
+        name=f"{pa_a} — Male", y=age_labels_pyr, x=[-v for v in m_a],
+        orientation="h", marker_color="#639922", opacity=0.6,
+        hovertemplate="%{customdata:.2f}%<extra>" + pa_a + " Male</extra>",
+        customdata=m_a, legendgroup="a",
+    ))
+    fig_pyr.add_trace(go.Bar(
+        name=f"{pa_a} — Female", y=age_labels_pyr, x=f_a,
+        orientation="h", marker_color="#639922", opacity=0.6,
+        hovertemplate="%{x:.2f}%<extra>" + pa_a + " Female</extra>",
+        legendgroup="a",
+    ))
 
-    with cr2:
-        fig_pyr2 = go.Figure()
-        fig_pyr2.add_trace(go.Bar(
-            name="Male", y=age_labels_pyr,
-            x=[-v for v in pyr_vals(rb, "male")],
-            orientation="h", marker_color="#534AB7", opacity=0.85,
-            hovertemplate="%{customdata:,}<extra>Male</extra>",
-            customdata=pyr_vals(rb, "male"),
-        ))
-        fig_pyr2.add_trace(go.Bar(
-            name="Female", y=age_labels_pyr,
-            x=pyr_vals(rb, "female"),
-            orientation="h", marker_color="#D4537E", opacity=0.85,
-            hovertemplate="%{x:,}<extra>Female</extra>",
-        ))
-        max_val2 = max(max(pyr_vals(rb, "male")), max(pyr_vals(rb, "female")), 1)
-        fig_pyr2.update_layout(
-            title=dict(text=pa_b, font=dict(size=13)),
-            barmode="overlay",
-            height=420,
-            margin=dict(t=30, b=10, l=10, r=10),
-            xaxis=dict(
-                tickvals=[-max_val2, -max_val2//2, 0, max_val2//2, max_val2],
-                ticktext=[f"{max_val2:,}", f"{max_val2//2:,}", "0",
-                          f"{max_val2//2:,}", f"{max_val2:,}"],
-                title="Population",
-            ),
-            legend=dict(orientation="h", y=1.05),
-            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-        )
-        st.plotly_chart(fig_pyr2, use_container_width=True)
+    # Area B — outlined bars, males left
+    m_b = pyr_pct(rb, "male")
+    f_b = pyr_pct(rb, "female")
+    fig_pyr.add_trace(go.Bar(
+        name=f"{pa_b} — Male", y=age_labels_pyr, x=[-v for v in m_b],
+        orientation="h",
+        marker=dict(color="rgba(55,138,221,0.15)",
+                    line=dict(color="#378ADD", width=1.5)),
+        hovertemplate="%{customdata:.2f}%<extra>" + pa_b + " Male</extra>",
+        customdata=m_b, legendgroup="b",
+    ))
+    fig_pyr.add_trace(go.Bar(
+        name=f"{pa_b} — Female", y=age_labels_pyr, x=f_b,
+        orientation="h",
+        marker=dict(color="rgba(55,138,221,0.15)",
+                    line=dict(color="#378ADD", width=1.5)),
+        hovertemplate="%{x:.2f}%<extra>" + pa_b + " Female</extra>",
+        legendgroup="b",
+    ))
+
+    max_pct = max(max(m_a + f_a + m_b + f_b), 0.1)
+    tick_step = round(max_pct / 2, 1)
+
+    fig_pyr.update_layout(
+        barmode="overlay",
+        height=500,
+        margin=dict(t=10, b=40, l=10, r=10),
+        xaxis=dict(
+            tickvals=[-max_pct, -tick_step, 0, tick_step, max_pct],
+            ticktext=[f"{max_pct:.1f}%", f"{tick_step:.1f}%", "0",
+                      f"{tick_step:.1f}%", f"{max_pct:.1f}%"],
+            title="% of population",
+            zeroline=True, zerolinecolor="rgba(255,255,255,0.3)", zerolinewidth=1,
+        ),
+        legend=dict(orientation="h", y=1.03, x=0, font=dict(size=11)),
+        bargap=0.1,
+        plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+    )
+    st.plotly_chart(fig_pyr, use_container_width=True)
 
     # Radar using broad bands for shape comparison
-    st.subheader("Age structure comparison (broad bands)")
+    st.subheader("Age structure — broad bands")
     age_keys_broad   = ["pct_age_0_14", "pct_age_15_64", "pct_age_65plus"]
     age_labels_broad = ["Under 15", "15–64", "65+"]
     radar_age = go.Figure()
