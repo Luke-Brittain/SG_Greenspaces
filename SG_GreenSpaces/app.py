@@ -808,10 +808,11 @@ elif page == "👥 Demographics":
                 orientation="h", name=label, marker_color=LC_COLORS[key],
             ))
         fig.update_layout(
-            barmode="stack", height=max(300, len(reg_df) * 28),
-            margin=dict(l=10, r=10, t=10, b=30),
+            barmode="stack", height=max(300, len(reg_df) * 28) + 50,
+            margin=dict(l=10, r=10, t=10, b=60),
             xaxis=dict(range=[0, 100], title="% cover"),
-            legend=dict(orientation="h", y=1.08),
+            legend=dict(orientation="h", yanchor="bottom", y=-0.15,
+                        xanchor="left", x=0),
             plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
         )
         st.plotly_chart(fig, use_container_width=True)
