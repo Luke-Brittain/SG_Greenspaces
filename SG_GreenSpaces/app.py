@@ -637,14 +637,20 @@ elif page == "👥 Demographics":
         cl, cr = st.columns(2)
         with cl:
             st.subheader("Age profile")
-            _age_bands = ["0_4","5_9","10_14","15_19","20_24","25_29","30_34","35_39",
-                          "40_44","45_49","50_54","55_59","60_64","65_69","70_74",
-                          "75_79","80_84","85_89","90andOver"]
-            _age_lbls  = ["0–4","5–9","10–14","15–19","20–24","25–29","30–34","35–39",
-                          "40–44","45–49","50–54","55–59","60–64","65–69","70–74",
-                          "75–79","80–84","85–89","90+"]
-            _m_vals = [float(row.get(f"pop2020_m_{b}") or 0) for b in _age_bands]
-            _f_vals = [float(row.get(f"pop2020_f_{b}") or 0) for b in _age_bands]
+            _bands10 = [
+                ("0–9",   ["0_4",  "5_9"]),
+                ("10–19", ["10_14","15_19"]),
+                ("20–29", ["20_24","25_29"]),
+                ("30–39", ["30_34","35_39"]),
+                ("40–49", ["40_44","45_49"]),
+                ("50–59", ["50_54","55_59"]),
+                ("60–69", ["60_64","65_69"]),
+                ("70–79", ["70_74","75_79"]),
+                ("80+",   ["80_84","85_89","90andOver"]),
+            ]
+            _age_lbls = [lbl for lbl, _ in _bands10]
+            _m_vals = [sum(float(row.get(f"pop2020_m_{b}") or 0) for b in bnds) for _, bnds in _bands10]
+            _f_vals = [sum(float(row.get(f"pop2020_f_{b}") or 0) for b in bnds) for _, bnds in _bands10]
             _max_v  = max(max(_m_vals), max(_f_vals), 1)
             fig_age = go.Figure()
             fig_age.add_trace(go.Bar(
@@ -731,14 +737,21 @@ elif page == "👥 Demographics":
 
         with cr:
             st.subheader("Age structure (region)")
-            _ab  = ["0_4","5_9","10_14","15_19","20_24","25_29","30_34","35_39",
-                    "40_44","45_49","50_54","55_59","60_64","65_69","70_74",
-                    "75_79","80_84","85_89","90andOver"]
-            _lbl = ["0–4","5–9","10–14","15–19","20–24","25–29","30–34","35–39",
-                    "40–44","45–49","50–54","55–59","60–64","65–69","70–74",
-                    "75–79","80–84","85–89","90+"]
-            _rm  = [reg_df[f"pop2020_m_{b}"].apply(lambda x: float(x) if x not in ('','-',None) else 0).sum() for b in _ab]
-            _rf  = [reg_df[f"pop2020_f_{b}"].apply(lambda x: float(x) if x not in ('','-',None) else 0).sum() for b in _ab]
+            _bands10r = [
+                ("0–9",   ["0_4",  "5_9"]),
+                ("10–19", ["10_14","15_19"]),
+                ("20–29", ["20_24","25_29"]),
+                ("30–39", ["30_34","35_39"]),
+                ("40–49", ["40_44","45_49"]),
+                ("50–59", ["50_54","55_59"]),
+                ("60–69", ["60_64","65_69"]),
+                ("70–79", ["70_74","75_79"]),
+                ("80+",   ["80_84","85_89","90andOver"]),
+            ]
+            _lbl = [lbl for lbl, _ in _bands10r]
+            def _col_sum(col): return reg_df[col].apply(lambda x: float(x) if x not in ('','-',None) else 0).sum()
+            _rm  = [sum(_col_sum(f"pop2020_m_{b}") for b in bnds) for _, bnds in _bands10r]
+            _rf  = [sum(_col_sum(f"pop2020_f_{b}") for b in bnds) for _, bnds in _bands10r]
             _rmx = max(max(_rm), max(_rf), 1)
             fig_p = go.Figure()
             fig_p.add_trace(go.Bar(
@@ -994,19 +1007,27 @@ elif page == "⚖️ Compare":
     st.caption("Both areas normalised to % of their own population — directly comparable regardless of size. "
                f"Males left · Females right · {pa_a} filled · {pa_b} outlined.")
 
-    age_bands  = ["0_4","5_9","10_14","15_19","20_24","25_29","30_34","35_39",
-                  "40_44","45_49","50_54","55_59","60_64","65_69","70_74",
-                  "75_79","80_84","85_89","90andOver"]
-    age_labels_pyr = ["0–4","5–9","10–14","15–19","20–24","25–29","30–34","35–39",
-                      "40–44","45–49","50–54","55–59","60–64","65–69","70–74",
-                      "75–79","80–84","85–89","90+"]
+    bands_10_pyr = [
+        ("0–9",   ["0_4",  "5_9"]),
+        ("10–19", ["10_14","15_19"]),
+        ("20–29", ["20_24","25_29"]),
+        ("30–39", ["30_34","35_39"]),
+        ("40–49", ["40_44","45_49"]),
+        ("50–59", ["50_54","55_59"]),
+        ("60–69", ["60_64","65_69"]),
+        ("70–79", ["70_74","75_79"]),
+        ("80+",   ["80_84","85_89","90andOver"]),
+    ]
+    age_labels_pyr = [lbl for lbl, _ in bands_10_pyr]
 
     def pyr_pct(row, sex):
-        """Return each band as % of total population."""
-        total = max(safe(row.get("pop2020_total", 0)), 1)
+        """Return each 10-year band as % of total population."""
+        total  = max(safe(row.get("pop2020_total", 0)), 1)
         prefix = "m" if sex == "male" else "f"
-        return [safe(row.get(f"pop2020_{prefix}_{b}", 0)) / total * 100
-                for b in age_bands]
+        return [
+            sum(safe(row.get(f"pop2020_{prefix}_{b}", 0)) for b in bnds) / total * 100
+            for _, bnds in bands_10_pyr
+        ]
 
     # Build overlaid pyramid — Area A filled, Area B outlined
     fig_pyr = go.Figure()
