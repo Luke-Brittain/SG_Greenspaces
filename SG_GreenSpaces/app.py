@@ -231,33 +231,40 @@ if page == "🗺️ Map":
             # Custom floating tooltip via injected JS — no Leaflet tooltip wrapper
             m.get_root().html.add_child(folium.Element("""
             <script>
-            // Clamp Leaflet tooltip within viewport.
-            // Uses setTimeout(0) to run AFTER Leaflet finishes its own positioning.
+            // Clamp tooltip inside the map div — uses map container dimensions
+            // because streamlit-folium renders inside an iframe
             document.addEventListener("mousemove", function(e) {
                 var cx = e.clientX, cy = e.clientY;
                 setTimeout(function() {
-                    var tt = document.querySelector(".leaflet-tooltip");
-                    if (!tt) return;
-                    var pad = 16;
+                    var tt  = document.querySelector(".leaflet-tooltip");
+                    var map = document.getElementById("map") ||
+                              document.querySelector(".folium-map") ||
+                              document.querySelector(".leaflet-container");
+                    if (!tt || !map) return;
                     var ttW = tt.offsetWidth;
                     var ttH = tt.offsetHeight;
                     if (!ttW || !ttH) return;
-                    var vW = window.innerWidth;
-                    var vH = window.innerHeight;
-                    // Parse current position set by Leaflet
-                    var curLeft = parseFloat(tt.style.left) || cx;
-                    var curTop  = parseFloat(tt.style.top)  || cy;
-                    // Flip horizontally if spilling right
-                    if (curLeft + ttW + pad > vW) {
+                    var pad    = 16;
+                    var mRect  = map.getBoundingClientRect();
+                    // Available space inside the map container
+                    var maxX   = mRect.right  - ttW - pad;
+                    var maxY   = mRect.bottom - ttH - pad;
+                    var minX   = mRect.left   + pad;
+                    var minY   = mRect.top    + pad;
+                    // Start from Leaflet's own placement
+                    var curLeft = parseFloat(tt.style.left) || (cx + 16);
+                    var curTop  = parseFloat(tt.style.top)  || (cy - 10);
+                    // Flip left if spilling past right edge of map
+                    if (curLeft + ttW + pad > mRect.right) {
                         curLeft = cx - ttW - 16;
                     }
-                    // Flip vertically if spilling below
-                    if (curTop + ttH + pad > vH) {
+                    // Flip up if spilling past bottom edge of map
+                    if (curTop + ttH + pad > mRect.bottom) {
                         curTop = cy - ttH - 10;
                     }
-                    // Hard clamp — never go off any edge
-                    curLeft = Math.max(pad, Math.min(curLeft, vW - ttW - pad));
-                    curTop  = Math.max(pad, Math.min(curTop,  vH - ttH - pad));
+                    // Hard clamp within map bounds
+                    curLeft = Math.max(minX, Math.min(curLeft, maxX));
+                    curTop  = Math.max(minY, Math.min(curTop,  maxY));
                     tt.style.left = curLeft + "px";
                     tt.style.top  = curTop  + "px";
                 }, 0);
