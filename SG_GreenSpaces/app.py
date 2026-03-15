@@ -13,6 +13,7 @@ import tempfile
 import os
 from pathlib import Path
 from PIL import Image
+import streamlit.components.v1 as components
 
 BASE_DIR = Path(__file__).parent
 
@@ -69,27 +70,11 @@ st.markdown("""
   h2 { font-size: 1.15rem !important; }
   h3 { font-size: 1rem !important; }
 </style>
-<script>
-  // Scroll to top on every render — tries all known Streamlit scroll containers
-  (function() {
-    var doc = window.parent.document;
-    var selectors = [
-      '.main',
-      '[data-testid="stAppViewContainer"]',
-      '[data-testid="stAppViewContainer"] > .main',
-      '[data-testid="stAppViewBlockContainer"]',
-      '#root > div:first-child',
-      'section.main',
-    ];
-    selectors.forEach(function(sel) {
-      var el = doc.querySelector(sel);
-      if (el) el.scrollTop = 0;
-    });
-    window.parent.document.documentElement.scrollTop = 0;
-    window.parent.document.body.scrollTop = 0;
-  })();
-</script>
+
 """, unsafe_allow_html=True)
+
+# Scroll to top on every page navigation
+components.html("<script>window.parent.document.querySelectorAll('.main, [data-testid=stAppViewBlockContainer]').forEach(function(el){el.scrollTop=0;});</script>", height=0)
 
 # ── Data loading ───────────────────────────────────────────────────────────────
 @st.cache_data
