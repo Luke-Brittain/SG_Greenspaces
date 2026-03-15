@@ -853,13 +853,12 @@ elif page == "💰 Income":
     )
 
     sc_left, sc_right = st.columns(2)
-    for col, y_col, y_label, y_fmt, title in [
-        (sc_left,  "pct_income_10000_over", "Workers earning $10k+ (%)", ":.1f",
-         "Green space vs high earners"),
-        (sc_right, "pct_income_below_1000", "Workers earning <$1k (%)",  ":.1f",
-         "Green space vs low earners"),
+    for col, y_col, y_label, title in [
+        (sc_left,  "pct_income_10000_over", "Workers earning $10k+ (%)", "Green space vs high earners"),
+        (sc_right, "pct_income_below_1000", "Workers earning <$1k (%)",  "Green space vs low earners"),
     ]:
         with col:
+            # Scatter coloured by region — no per-region trendline
             fig_sc = px.scatter(
                 inc_scatter,
                 x=gm_col, y=y_col,
@@ -868,10 +867,23 @@ elif page == "💰 Income":
                 hover_name="name",
                 hover_data={gm_col: gm_fmt, y_col: ":.1f", "pop2020_total": ":,"},
                 labels={gm_col: gm_label, y_col: y_label, "region": "Region"},
-                trendline="ols",
                 title=title,
             )
-            r = inc_scatter[[gm_col, y_col]].corr().iloc[0, 1]
+            # Add a single overall OLS trendline manually
+            x_vals = inc_scatter[gm_col].values
+            y_vals = inc_scatter[y_col].values
+            mask   = ~(np.isnan(x_vals) | np.isnan(y_vals))
+            if mask.sum() > 2:
+                m, b   = np.polyfit(x_vals[mask], y_vals[mask], 1)
+                x_line = np.array([x_vals[mask].min(), x_vals[mask].max()])
+                y_line = m * x_line + b
+                fig_sc.add_trace(go.Scatter(
+                    x=x_line, y=y_line,
+                    mode="lines",
+                    line=dict(color="rgba(100,100,100,0.6)", width=2, dash="dot"),
+                    showlegend=False, hoverinfo="skip",
+                ))
+            r = float(np.corrcoef(x_vals[mask], y_vals[mask])[0, 1]) if mask.sum() > 2 else 0.0
             fig_sc.add_annotation(
                 x=0.97, y=0.05, xref="paper", yref="paper",
                 text=f"r = {r:+.2f}",
