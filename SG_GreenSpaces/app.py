@@ -231,23 +231,36 @@ if page == "🗺️ Map":
             # Custom floating tooltip via injected JS — no Leaflet tooltip wrapper
             m.get_root().html.add_child(folium.Element("""
             <script>
-            // Reposition Leaflet tooltip to stay within viewport on every mousemove
+            // Clamp Leaflet tooltip within viewport.
+            // Uses setTimeout(0) to run AFTER Leaflet finishes its own positioning.
             document.addEventListener("mousemove", function(e) {
-                var tt = document.querySelector(".leaflet-tooltip");
-                if (!tt || tt.style.display === "none") return;
-                var pad = 12;
-                var ttW = tt.offsetWidth  || 260;
-                var ttH = tt.offsetHeight || 200;
-                var vW  = window.innerWidth;
-                var vH  = window.innerHeight;
-                var x   = e.clientX;
-                var y   = e.clientY;
-                var left = (x + 16 + ttW + pad > vW) ? (x - ttW - 16) : (x + 16);
-                var top  = (y + ttH + pad > vH)      ? (y - ttH - 10) : (y - 10);
-                left = Math.max(pad, Math.min(left, vW - ttW - pad));
-                top  = Math.max(pad, Math.min(top,  vH - ttH - pad));
-                tt.style.left = left + "px";
-                tt.style.top  = top  + "px";
+                var cx = e.clientX, cy = e.clientY;
+                setTimeout(function() {
+                    var tt = document.querySelector(".leaflet-tooltip");
+                    if (!tt) return;
+                    var pad = 16;
+                    var ttW = tt.offsetWidth;
+                    var ttH = tt.offsetHeight;
+                    if (!ttW || !ttH) return;
+                    var vW = window.innerWidth;
+                    var vH = window.innerHeight;
+                    // Parse current position set by Leaflet
+                    var curLeft = parseFloat(tt.style.left) || cx;
+                    var curTop  = parseFloat(tt.style.top)  || cy;
+                    // Flip horizontally if spilling right
+                    if (curLeft + ttW + pad > vW) {
+                        curLeft = cx - ttW - 16;
+                    }
+                    // Flip vertically if spilling below
+                    if (curTop + ttH + pad > vH) {
+                        curTop = cy - ttH - 10;
+                    }
+                    // Hard clamp — never go off any edge
+                    curLeft = Math.max(pad, Math.min(curLeft, vW - ttW - pad));
+                    curTop  = Math.max(pad, Math.min(curTop,  vH - ttH - pad));
+                    tt.style.left = curLeft + "px";
+                    tt.style.top  = curTop  + "px";
+                }, 0);
             });
             </script>
             """))
