@@ -96,6 +96,17 @@ def load_csv():
     df["pct_age_0_14"]   = df["pop2020_0_14"]   / pop * 100
     df["pct_age_15_64"]  = df["pop2020_15_64"]  / pop * 100
     df["pct_age_65plus"] = df["pop2020_65plus"]  / pop * 100
+    # 10-year band percentages
+    def _sum_bands(cols): return sum(df[c].fillna(0) for c in cols) / pop * 100
+    df["pct_age10_0_9"]   = _sum_bands(["pop2020_t_0_4",  "pop2020_t_5_9"])
+    df["pct_age10_10_19"] = _sum_bands(["pop2020_t_10_14","pop2020_t_15_19"])
+    df["pct_age10_20_29"] = _sum_bands(["pop2020_t_20_24","pop2020_t_25_29"])
+    df["pct_age10_30_39"] = _sum_bands(["pop2020_t_30_34","pop2020_t_35_39"])
+    df["pct_age10_40_49"] = _sum_bands(["pop2020_t_40_44","pop2020_t_45_49"])
+    df["pct_age10_50_59"] = _sum_bands(["pop2020_t_50_54","pop2020_t_55_59"])
+    df["pct_age10_60_69"] = _sum_bands(["pop2020_t_60_64","pop2020_t_65_69"])
+    df["pct_age10_70_79"] = _sum_bands(["pop2020_t_70_74","pop2020_t_75_79"])
+    df["pct_age10_80plus"]= _sum_bands(["pop2020_t_80_84","pop2020_t_85_89","pop2020_t_90andOver"])
     # Per-band percentage of total population
     df["pct_age_t_0_4"] = df["pop2020_t_0_4"] / pop * 100
     df["pct_age_t_5_9"] = df["pop2020_t_5_9"] / pop * 100
@@ -161,6 +172,14 @@ def load_raster_preview():
 # ── Load data ──────────────────────────────────────────────────────────────────
 df  = load_csv()
 gdf = load_shapefile()
+
+def safe_m(row, col):
+    """Safely get a numeric value from a DataFrame row."""
+    try:
+        v = row[col]
+        return float(v) if pd.notna(v) else 0.0
+    except (KeyError, TypeError, ValueError):
+        return 0.0
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 st.sidebar.title("🇸🇬 Singapore Dashboard")
@@ -420,7 +439,7 @@ elif page == "🌿 Green vs Urban":
     with col_l:
         st.subheader("Urban vs total green — scatter")
         color_by = st.selectbox(
-            "Colour by", ["Region", "% Parkland", "% Water", "% Aged 65+"],
+            "Colour by", ["Region", "% Parkland", "% Water", "% Aged 60+"],
             key="scatter_color",
         )
         size_by = st.selectbox("Size by", ["Population", "Equal"], key="scatter_size")
@@ -428,11 +447,17 @@ elif page == "🌿 Green vs Urban":
         plot_df = dff.dropna(subset=["pct_urban", "pct_green_total"])
         sizes   = np.sqrt(plot_df["pop2020_total"].fillna(0)) * 0.6 + 6 if size_by == "Population" else 10
 
+        plot_df = plot_df.copy()
+        plot_df["pct_age_60plus"] = (
+            plot_df["pct_age10_60_69"].fillna(0) +
+            plot_df["pct_age10_70_79"].fillna(0) +
+            plot_df["pct_age10_80plus"].fillna(0)
+        )
         color_map = {
             "Region":     ("region",         REGION_COLORS),
             "% Parkland": ("pct_parkland",   None),
             "% Water":    ("pct_water",      None),
-            "% Aged 65+": ("pct_age_65plus", None),
+            "% Aged 60+": ("pct_age_60plus", None),
         }
         c_col, c_scale = color_map[color_by]
 
@@ -604,9 +629,9 @@ elif page == "👥 Demographics":
         c1, c2, c3, c4 = st.columns(4)
         pop = int(row["pop2020_total"]) if pd.notna(row["pop2020_total"]) else None
         with c1: st.metric("Population",      f"{pop:,}" if pop else "n/a")
-        with c2: st.metric("Under 15",        f"{row['pct_age_0_14']:.1f}%"   if pd.notna(row["pct_age_0_14"])   else "n/a")
-        with c3: st.metric("Working (15–64)", f"{row['pct_age_15_64']:.1f}%"  if pd.notna(row["pct_age_15_64"])  else "n/a")
-        with c4: st.metric("Aged 65+",        f"{row['pct_age_65plus']:.1f}%" if pd.notna(row["pct_age_65plus"]) else "n/a")
+        with c2: st.metric("0–19",   f"{(safe_m(row,'pct_age10_0_9') + safe_m(row,'pct_age10_10_19')):.1f}%")
+        with c3: st.metric("20–59",  f"{sum(safe_m(row,f'pct_age10_{b}') for b in ['20_29','30_39','40_49','50_59']):.1f}%")
+        with c4: st.metric("60+",    f"{sum(safe_m(row,f'pct_age10_{b}') for b in ['60_69','70_79','80plus']):.1f}%")
 
         st.divider()
         cl, cr = st.columns(2)
@@ -683,7 +708,7 @@ elif page == "👥 Demographics":
         with c1: st.metric("Region population", f"{total_pop:,}")
         with c2: st.metric("Avg % urban",        f"{reg_df['pct_urban'].mean():.1f}%")
         with c3: st.metric("Avg % green",         f"{reg_df['pct_green_total'].mean():.1f}%")
-        with c4: st.metric("Avg aged 65+",        f"{reg_df['pct_age_65plus'].mean():.1f}%")
+        with c4: st.metric("Avg aged 60+",        f"{(reg_df['pct_age10_60_69'].fillna(0) + reg_df['pct_age10_70_79'].fillna(0) + reg_df['pct_age10_80plus'].fillna(0)).mean():.1f}%")
 
         st.divider()
         cl, cr = st.columns(2)
@@ -743,11 +768,11 @@ elif page == "👥 Demographics":
 
             st.subheader("Ageing vs green space")
             fig_ag = px.scatter(
-                reg_df.dropna(subset=["pct_age_65plus", "pct_green_total"]),
-                x="pct_green_total", y="pct_age_65plus",
+                reg_df.assign(pct_age_60plus=reg_df["pct_age10_60_69"].fillna(0) + reg_df["pct_age10_70_79"].fillna(0) + reg_df["pct_age10_80plus"].fillna(0)).dropna(subset=["pct_green_total"]),
+                x="pct_green_total", y="pct_age_60plus",
                 size="pop2020_total", text="name",
                 color_discrete_sequence=[REGION_COLORS.get(sel_region, "#888")],
-                labels={"pct_green_total": "% Green", "pct_age_65plus": "% Aged 65+"},
+                labels={"pct_green_total": "% Green", "pct_age_60plus": "% Aged 60+"},
             )
             fig_ag.update_traces(textposition="top center", textfont_size=10)
             fig_ag.update_layout(
@@ -877,11 +902,23 @@ elif page == "⚖️ Compare":
         ("% Green (total)", "pct_green_total",   "%"),
         ("% Parkland",      "pct_parkland",      "%"),
         ("% Water",         "pct_water",         "%"),
-        ("Aged 65+",        "pct_age_65plus",    "%"),
+        ("Aged 60+",        "pct_age10_60plus_sum", "%"),
     ]
+    # Pre-compute 60+ sum for both rows
+    for _r in [ra, rb]:
+        pass  # pct_age10_60plus_sum computed inline below
+
+    def age60plus(r):
+        return (safe(r.get("pct_age10_60_69", 0)) +
+                safe(r.get("pct_age10_70_79", 0)) +
+                safe(r.get("pct_age10_80plus", 0)))
+
     for col, (label, field, unit) in zip([c1,c2,c3,c4,c5,c6], metrics):
-        va = ra[field]
-        vb = rb[field]
+        if field == "pct_age10_60plus_sum":
+            va, vb = age60plus(ra), age60plus(rb)
+        else:
+            va = ra[field]
+            vb = rb[field]
         if field == "pop2020_total":
             sa = f"{int(va):,}" if pd.notna(va) and va > 0 else "n/a"
             sb = f"{int(vb):,}" if pd.notna(vb) and vb > 0 else "n/a"
