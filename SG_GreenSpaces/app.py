@@ -74,7 +74,24 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Scroll to top on every page navigation
-components.html("<script>window.parent.document.querySelectorAll('.main, [data-testid=stAppViewBlockContainer]').forEach(function(el){el.scrollTop=0;});</script>", height=0)
+components.html("""<script>
+(function() {
+  var p = window.parent.document;
+  // Try every plausible Streamlit scroll container
+  var found = [];
+  p.querySelectorAll('*').forEach(function(el) {
+    if (el.scrollTop > 0 || el.scrollHeight > el.clientHeight) {
+      var s = window.parent.getComputedStyle(el);
+      if (s.overflowY === 'auto' || s.overflowY === 'scroll') {
+        el.scrollTop = 0;
+        found.push(el.tagName + (el.className ? '.' + el.className.split(' ')[0] : ''));
+      }
+    }
+  });
+  p.documentElement.scrollTop = 0;
+  p.body.scrollTop = 0;
+})();
+</script>""", height=0)
 
 # ── Data loading ───────────────────────────────────────────────────────────────
 @st.cache_data
