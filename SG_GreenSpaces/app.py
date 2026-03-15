@@ -908,43 +908,84 @@ elif page == "⚖️ Compare":
 
     # ── Headline metrics ───────────────────────────────────────────────────────
     st.divider()
-    c1, c2, c3, c4, c5, c6 = st.columns(6)
-    metrics = [
-        ("Population",      "pop2020_total",     None),
-        ("% Urban",         "pct_urban",         "%"),
-        ("% Green (total)", "pct_green_total",   "%"),
-        ("% Parkland",      "pct_parkland",      "%"),
-        ("% Water",         "pct_water",         "%"),
-        ("Aged 60+",        "pct_age10_60plus_sum", "%"),
-    ]
-    # Pre-compute 60+ sum for both rows
-    for _r in [ra, rb]:
-        pass  # pct_age10_60plus_sum computed inline below
 
     def age60plus(r):
         return (safe(r.get("pct_age10_60_69", 0)) +
                 safe(r.get("pct_age10_70_79", 0)) +
                 safe(r.get("pct_age10_80plus", 0)))
 
-    for col, (label, field, unit) in zip([c1,c2,c3,c4,c5,c6], metrics):
+    metrics = [
+        ("Population",      "pop2020_total",        "pop"),
+        ("% Urban",         "pct_urban",             "pct"),
+        ("% Green (total)", "pct_green_total",       "pct"),
+        ("% Parkland",      "pct_parkland",          "pct"),
+        ("% Water",         "pct_water",             "pct"),
+        ("Aged 60+",        "pct_age10_60plus_sum",  "pct"),
+    ]
+
+    def get_vals(field):
         if field == "pct_age10_60plus_sum":
-            va, vb = age60plus(ra), age60plus(rb)
+            return age60plus(ra), age60plus(rb)
+        return ra[field], rb[field]
+
+    def fmt_val(v, kind):
+        if kind == "pop":
+            return f"{int(v):,}" if pd.notna(v) and v > 0 else "n/a"
+        return f"{safe(v):.1f}%" if pd.notna(v) else "n/a"
+
+    # Area name colour key above the scorecards
+    st.markdown(
+        f"<div style='display:flex;gap:24px;margin-bottom:8px;font-size:13px'>"
+        f"<span><span style='display:inline-block;width:12px;height:12px;"
+        f"border-radius:2px;background:#639922;margin-right:6px;vertical-align:middle'></span>"
+        f"<strong>{pa_a}</strong></span>"
+        f"<span><span style='display:inline-block;width:12px;height:12px;"
+        f"border-radius:2px;background:#378ADD;margin-right:6px;vertical-align:middle'></span>"
+        f"<strong>{pa_b}</strong></span>"
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
+    for col, (label, field, kind) in zip([c1,c2,c3,c4,c5,c6], metrics):
+        va, vb   = get_vals(field)
+        sa       = fmt_val(va, kind)
+        sb       = fmt_val(vb, kind)
+        nva      = safe(va)
+        nvb      = safe(vb)
+        # Winner badge — ▲ on the higher value, dim the lower
+        if nva > nvb:
+            badge_a, badge_b   = "▲", ""
+            opacity_a, opacity_b = "1", "0.5"
+        elif nvb > nva:
+            badge_a, badge_b   = "", "▲"
+            opacity_a, opacity_b = "0.5", "1"
         else:
-            va = ra[field]
-            vb = rb[field]
-        if field == "pop2020_total":
-            sa = f"{int(va):,}" if pd.notna(va) and va > 0 else "n/a"
-            sb = f"{int(vb):,}" if pd.notna(vb) and vb > 0 else "n/a"
-        else:
-            sa = f"{safe(va):.1f}%" if pd.notna(va) else "n/a"
-            sb = f"{safe(vb):.1f}%" if pd.notna(vb) else "n/a"
+            badge_a = badge_b = ""
+            opacity_a = opacity_b = "1"
+
         with col:
             st.markdown(f"""
-            <div style="background:var(--background-secondary,#f5f5f5);border-radius:8px;padding:10px 12px;margin-bottom:4px">
-              <div style="font-size:11px;color:#888;margin-bottom:4px">{label}</div>
-              <div style="font-size:15px;font-weight:600;color:#639922">{sa}</div>
-              <div style="font-size:11px;color:#aaa;margin:2px 0">vs</div>
-              <div style="font-size:15px;font-weight:600;color:#378ADD">{sb}</div>
+            <div style="background:var(--color-background-secondary,#f5f5f5);
+                        border-radius:8px;padding:10px 12px;margin-bottom:4px">
+              <div style="font-size:13px;font-weight:500;color:var(--color-text-secondary,#555);margin-bottom:8px">{label}</div>
+              <div style="opacity:{opacity_a}">
+                <div style="font-size:10px;color:#639922;font-weight:500;
+                            text-overflow:ellipsis;overflow:hidden;white-space:nowrap"
+                     title="{pa_a}">{pa_a[:14]}{'…' if len(pa_a)>14 else ''}</div>
+                <div style="font-size:16px;font-weight:700;color:#639922;line-height:1.3">
+                  {sa}<span style="font-size:11px;margin-left:3px">{badge_a}</span>
+                </div>
+              </div>
+              <div style="height:1px;background:rgba(128,128,128,0.15);margin:5px 0"></div>
+              <div style="opacity:{opacity_b}">
+                <div style="font-size:10px;color:#378ADD;font-weight:500;
+                            text-overflow:ellipsis;overflow:hidden;white-space:nowrap"
+                     title="{pa_b}">{pa_b[:14]}{'…' if len(pa_b)>14 else ''}</div>
+                <div style="font-size:16px;font-weight:700;color:#378ADD;line-height:1.3">
+                  {sb}<span style="font-size:11px;margin-left:3px">{badge_b}</span>
+                </div>
+              </div>
             </div>
             """, unsafe_allow_html=True)
 
