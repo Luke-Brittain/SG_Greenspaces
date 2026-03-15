@@ -1274,7 +1274,7 @@ elif page == "⚖️ Compare":
                     x=diffs,
                     orientation="h",
                     marker_color=colors,
-                    hovertemplate="%{y}: %{x:+.1f}pp<extra></extra>",
+                    hovertemplate="%{y}: %{x:+.2f}%<extra></extra>",
                 ))
                 fig_div.add_vline(x=0, line_width=1,
                                   line_color="rgba(128,128,128,0.4)")
@@ -1282,9 +1282,9 @@ elif page == "⚖️ Compare":
                     height=320,
                     margin=dict(t=30, b=40, l=0, r=10),
                     xaxis=dict(
-                        title="pp difference (A − B)",
+                        title="% point difference (A − B)",
                         range=[-abs_max, abs_max],
-                        ticksuffix="pp",
+                        ticksuffix="%",
                         zeroline=False,
                     ),
                     yaxis=dict(title=""),
