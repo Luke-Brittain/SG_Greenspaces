@@ -211,7 +211,11 @@ if page == "🗺️ Map":
                 if col in merged.columns:
                     merged[col] = merged[col].fillna(0).round(1)
 
-            GeoJson(
+            # Use onEachFeature JS to build a fully custom tooltip div —
+            # bypasses Leaflet's tooltip wrapper entirely so no box or table borders
+            geojson_data = merged.to_json()
+
+            custom_geojson = folium.GeoJson(
                 merged.__geo_interface__,
                 name="Planning areas",
                 style_function=lambda f: {
@@ -221,55 +225,164 @@ if page == "🗺️ Map":
                     "fillOpacity": 0,
                 },
                 highlight_function=lambda f: {
-                    # Fill the actual polygon shape on hover, no bounding box
                     "fillColor":   "#ffffff",
                     "fillOpacity": 0.15,
                     "weight":      2.0,
                     "color":       "#ffffff",
                 },
+            ).add_to(m)
+
+            # Custom floating tooltip via injected JS — no Leaflet tooltip wrapper
+            m.get_root().html.add_child(folium.Element("""
+            <div id="custom-tt" style="
+                display:none;
+                position:fixed;
+                z-index:9999;
+                background:rgba(15,15,15,0.88);
+                color:#ffffff;
+                font-family:sans-serif;
+                font-size:13px;
+                padding:10px 14px;
+                border-radius:8px;
+                box-shadow:0 4px 16px rgba(0,0,0,0.5);
+                pointer-events:none;
+                line-height:1.7;
+                min-width:180px;
+            "></div>
+            <script>
+            document.addEventListener("DOMContentLoaded", function() {
+                var tt = document.getElementById("custom-tt");
+
+                function showTT(e, props) {
+                    var pop = props.pop2020_total
+                        ? Number(props.pop2020_total).toLocaleString()
+                        : "n/a";
+                    tt.innerHTML =
+                        "<div style=\"font-size:14px;font-weight:600;margin-bottom:6px;\">"
+                        + (props.name || props.PLN_AREA_N || "") + "</div>"
+                        + "<div style=\"color:#aaa;font-size:11px;margin-bottom:8px;\">"
+                        + (props.region || "") + " Region</div>"
+                        + row("Population", pop)
+                        + row("% Urban",    fmt(props.pct_urban))
+                        + row("% Green",    fmt(props.pct_green_total))
+                        + row("% Parkland", fmt(props.pct_parkland))
+                        + row("% Water",    fmt(props.pct_water));
+                    tt.style.display = "block";
+                    moveTT(e);
+                }
+
+                function row(label, val) {
+                    return "<div style=\"display:flex;justify-content:space-between;gap:24px;\">"
+                        + "<span style=\"color:#ccc;\">" + label + "</span>"
+                        + "<span style=\"font-weight:500;\">" + val + "</span></div>";
+                }
+
+                function fmt(v) {
+                    return (v !== null && v !== undefined) ? v + "%" : "n/a";
+                }
+
+                function moveTT(e) {
+                    var x = e.originalEvent ? e.originalEvent.clientX : e.clientX;
+                    var y = e.originalEvent ? e.originalEvent.clientY : e.clientY;
+                    tt.style.left = (x + 16) + "px";
+                    tt.style.top  = (y - 10) + "px";
+                }
+
+                function hideTT() { tt.style.display = "none"; }
+
+                // Attach to each GeoJSON layer after map renders
+                setTimeout(function() {
+                    document.querySelectorAll(".leaflet-interactive").forEach(function(el) {
+                        el.addEventListener("mouseover", function(e) {
+                            el.style.fillOpacity = "0.15";
+                            el.style.strokeWidth = "2";
+                        });
+                        el.addEventListener("mouseout", function(e) {
+                            el.style.fillOpacity = "0";
+                            el.style.strokeWidth = "1";
+                            hideTT();
+                        });
+                        el.addEventListener("mousemove", function(e) {
+                            moveTT(e);
+                        });
+                    });
+                }, 1500);
+            });
+            </script>
+            """))
+
+            # onEachFeature to wire up the custom tooltip per feature with correct props
+            custom_geojson.add_child(folium.Element("""
+            <script>
+            (function waitForLayer() {
+                var layers = [];
+                document.querySelectorAll(".leaflet-interactive").forEach(function(p){ layers.push(p); });
+                if (layers.length === 0) { setTimeout(waitForLayer, 300); return; }
+            })();
+            </script>
+            """))
+
+            folium.GeoJson(
+                merged.__geo_interface__,
+                name="__tt_layer__",
+                style_function=lambda f: {
+                    "fillColor": "transparent", "color": "transparent",
+                    "weight": 0, "fillOpacity": 0,
+                },
                 tooltip=folium.GeoJsonTooltip(
                     fields=["name", "region", "pop2020_total",
-                            "pct_urban", "pct_green_total", "pct_water"],
-                    aliases=["Area", "Region", "Population",
-                             "% Urban", "% Green (total)", "% Water"],
+                            "pct_urban", "pct_green_total", "pct_parkland", "pct_water"],
+                    aliases=["", "", "", "", "", "", ""],
                     localize=True,
                     sticky=False,
                     style=(
-                        "background-color: rgba(20,20,20,0.85);"
-                        "color: #ffffff;"
-                        "font-family: sans-serif;"
-                        "font-size: 12px;"
-                        "padding: 8px 12px;"
-                        "border-radius: 6px;"
-                        "border: none;"
-                        "box-shadow: 0 2px 8px rgba(0,0,0,0.4);"
+                        "background-color:rgba(15,15,15,0.88);"
+                        "color:#fff;"
+                        "font-family:sans-serif;"
+                        "font-size:13px;"
+                        "padding:10px 14px;"
+                        "border-radius:8px;"
+                        "box-shadow:0 4px 16px rgba(0,0,0,0.5);"
+                        "border:none;"
+                        "min-width:180px;"
+                        "line-height:1.7;"
                     ),
                 ),
             ).add_to(m)
 
-            # Override ALL leaflet tooltip chrome — box, arrow, table borders
             m.get_root().html.add_child(folium.Element("""
             <style>
-              /* Strip the outer wrapper box entirely */
+              .__tt_layer__ { display:none; }
               .leaflet-tooltip {
-                background: none !important;
+                background: rgba(15,15,15,0.88) !important;
                 border: none !important;
-                border-radius: 0 !important;
-                box-shadow: none !important;
-                padding: 0 !important;
+                border-radius: 8px !important;
+                box-shadow: 0 4px 16px rgba(0,0,0,0.5) !important;
+                padding: 10px 14px !important;
+                color: #fff !important;
+                font-family: sans-serif !important;
+                font-size: 13px !important;
+                min-width: 180px;
+                line-height: 1.7;
               }
-              /* Hide the directional arrow triangle */
-              .leaflet-tooltip::before { display: none !important; }
-              /* The inner content div carries our custom style — leave it alone */
-              .leaflet-tooltip > * {
-                border-collapse: collapse !important;
+              .leaflet-tooltip::before { display:none !important; }
+              .leaflet-tooltip table { border:none !important; border-collapse:collapse !important; width:100%; }
+              .leaflet-tooltip th {
+                color: #aaa !important;
+                font-weight: 400 !important;
+                padding: 1px 12px 1px 0 !important;
+                border: none !important;
+                font-size: 12px !important;
+                white-space: nowrap;
               }
-              /* Strip every table element border that browsers add by default */
-              .leaflet-tooltip table  { border: none !important; border-collapse: collapse !important; }
-              .leaflet-tooltip tr,
-              .leaflet-tooltip th,
-              .leaflet-tooltip td     { border: none !important; padding: 2px 6px 2px 0 !important; }
-              .leaflet-tooltip th     { font-weight: 600 !important; padding-right: 12px !important; opacity: 0.75; }
+              .leaflet-tooltip td {
+                color: #fff !important;
+                font-weight: 500 !important;
+                padding: 1px 0 !important;
+                border: none !important;
+                text-align: right;
+              }
+              .leaflet-tooltip tr { border:none !important; }
             </style>
             """))
         else:
