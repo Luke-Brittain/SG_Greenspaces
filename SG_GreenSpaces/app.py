@@ -79,6 +79,8 @@ def load_csv():
     num_cols = [
         "pop2020_total", "pop2020_male", "pop2020_female",
         "pop2020_0_14", "pop2020_15_64", "pop2020_65plus",
+        # Full 5-year age bands
+        "pop2020_m_0_4", "pop2020_f_0_4", "pop2020_t_0_4", "pop2020_m_5_9", "pop2020_f_5_9", "pop2020_t_5_9", "pop2020_m_10_14", "pop2020_f_10_14", "pop2020_t_10_14", "pop2020_m_15_19", "pop2020_f_15_19", "pop2020_t_15_19", "pop2020_m_20_24", "pop2020_f_20_24", "pop2020_t_20_24", "pop2020_m_25_29", "pop2020_f_25_29", "pop2020_t_25_29", "pop2020_m_30_34", "pop2020_f_30_34", "pop2020_t_30_34", "pop2020_m_35_39", "pop2020_f_35_39", "pop2020_t_35_39", "pop2020_m_40_44", "pop2020_f_40_44", "pop2020_t_40_44", "pop2020_m_45_49", "pop2020_f_45_49", "pop2020_t_45_49", "pop2020_m_50_54", "pop2020_f_50_54", "pop2020_t_50_54", "pop2020_m_55_59", "pop2020_f_55_59", "pop2020_t_55_59", "pop2020_m_60_64", "pop2020_f_60_64", "pop2020_t_60_64", "pop2020_m_65_69", "pop2020_f_65_69", "pop2020_t_65_69", "pop2020_m_70_74", "pop2020_f_70_74", "pop2020_t_70_74", "pop2020_m_75_79", "pop2020_f_75_79", "pop2020_t_75_79", "pop2020_m_80_84", "pop2020_f_80_84", "pop2020_t_80_84", "pop2020_m_85_89", "pop2020_f_85_89", "pop2020_t_85_89", "pop2020_m_90andOver", "pop2020_f_90andOver", "pop2020_t_90andOver",
         "pct_green_res", "pct_parkland", "pct_urban", "pct_water",
         "px_green_res", "px_parkland", "px_urban", "px_water", "px_total",
         "income_total_workers_thousands",
@@ -94,6 +96,26 @@ def load_csv():
     df["pct_age_0_14"]   = df["pop2020_0_14"]   / pop * 100
     df["pct_age_15_64"]  = df["pop2020_15_64"]  / pop * 100
     df["pct_age_65plus"] = df["pop2020_65plus"]  / pop * 100
+    # Per-band percentage of total population
+    df["pct_age_t_0_4"] = df["pop2020_t_0_4"] / pop * 100
+    df["pct_age_t_5_9"] = df["pop2020_t_5_9"] / pop * 100
+    df["pct_age_t_10_14"] = df["pop2020_t_10_14"] / pop * 100
+    df["pct_age_t_15_19"] = df["pop2020_t_15_19"] / pop * 100
+    df["pct_age_t_20_24"] = df["pop2020_t_20_24"] / pop * 100
+    df["pct_age_t_25_29"] = df["pop2020_t_25_29"] / pop * 100
+    df["pct_age_t_30_34"] = df["pop2020_t_30_34"] / pop * 100
+    df["pct_age_t_35_39"] = df["pop2020_t_35_39"] / pop * 100
+    df["pct_age_t_40_44"] = df["pop2020_t_40_44"] / pop * 100
+    df["pct_age_t_45_49"] = df["pop2020_t_45_49"] / pop * 100
+    df["pct_age_t_50_54"] = df["pop2020_t_50_54"] / pop * 100
+    df["pct_age_t_55_59"] = df["pop2020_t_55_59"] / pop * 100
+    df["pct_age_t_60_64"] = df["pop2020_t_60_64"] / pop * 100
+    df["pct_age_t_65_69"] = df["pop2020_t_65_69"] / pop * 100
+    df["pct_age_t_70_74"] = df["pop2020_t_70_74"] / pop * 100
+    df["pct_age_t_75_79"] = df["pop2020_t_75_79"] / pop * 100
+    df["pct_age_t_80_84"] = df["pop2020_t_80_84"] / pop * 100
+    df["pct_age_t_85_89"] = df["pop2020_t_85_89"] / pop * 100
+    df["pct_age_t_90andOver"] = df["pop2020_t_90andOver"] / pop * 100
     df["name"] = df["PLN_AREA_N"].str.title()
     return df
 
@@ -590,14 +612,39 @@ elif page == "👥 Demographics":
         cl, cr = st.columns(2)
         with cl:
             st.subheader("Age profile")
-            fig_age = go.Figure(go.Pie(
-                labels=["Under 15", "15–64", "65+"],
-                values=[row["pop2020_0_14"], row["pop2020_15_64"], row["pop2020_65plus"]],
-                marker_colors=["#1D9E75", "#534AB7", "#BA7517"],
-                hole=0.45,
+            _age_bands = ["0_4","5_9","10_14","15_19","20_24","25_29","30_34","35_39",
+                          "40_44","45_49","50_54","55_59","60_64","65_69","70_74",
+                          "75_79","80_84","85_89","90andOver"]
+            _age_lbls  = ["0–4","5–9","10–14","15–19","20–24","25–29","30–34","35–39",
+                          "40–44","45–49","50–54","55–59","60–64","65–69","70–74",
+                          "75–79","80–84","85–89","90+"]
+            _m_vals = [float(row.get(f"pop2020_m_{b}") or 0) for b in _age_bands]
+            _f_vals = [float(row.get(f"pop2020_f_{b}") or 0) for b in _age_bands]
+            _max_v  = max(max(_m_vals), max(_f_vals), 1)
+            fig_age = go.Figure()
+            fig_age.add_trace(go.Bar(
+                name="Male", y=_age_lbls, x=[-v for v in _m_vals],
+                orientation="h", marker_color="#534AB7", opacity=0.85,
+                hovertemplate="%{customdata:,}<extra>Male</extra>",
+                customdata=_m_vals,
             ))
-            fig_age.update_layout(height=280, margin=dict(t=10, b=10, l=10, r=10),
-                                   paper_bgcolor="rgba(0,0,0,0)")
+            fig_age.add_trace(go.Bar(
+                name="Female", y=_age_lbls, x=_f_vals,
+                orientation="h", marker_color="#D4537E", opacity=0.85,
+                hovertemplate="%{x:,}<extra>Female</extra>",
+            ))
+            fig_age.update_layout(
+                barmode="overlay", height=380,
+                margin=dict(t=10, b=10, l=0, r=0),
+                xaxis=dict(
+                    tickvals=[-_max_v, -_max_v//2, 0, _max_v//2, _max_v],
+                    ticktext=[f"{_max_v:,.0f}", f"{_max_v//2:,.0f}", "0",
+                              f"{_max_v//2:,.0f}", f"{_max_v:,.0f}"],
+                    title="Population",
+                ),
+                legend=dict(orientation="h", y=1.05),
+                plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
+            )
             st.plotly_chart(fig_age, use_container_width=True)
 
         with cr:
@@ -658,17 +705,39 @@ elif page == "👥 Demographics":
             st.plotly_chart(fig, use_container_width=True)
 
         with cr:
-            st.subheader("Population by age group")
-            age_totals = reg_df[["pop2020_0_14", "pop2020_15_64", "pop2020_65plus"]].sum()
-            fig_p = go.Figure(go.Bar(
-                x=["Under 15", "15–64", "65+"], y=age_totals.values,
-                marker_color=["#1D9E75", "#534AB7", "#BA7517"],
+            st.subheader("Age structure (region)")
+            _ab  = ["0_4","5_9","10_14","15_19","20_24","25_29","30_34","35_39",
+                    "40_44","45_49","50_54","55_59","60_64","65_69","70_74",
+                    "75_79","80_84","85_89","90andOver"]
+            _lbl = ["0–4","5–9","10–14","15–19","20–24","25–29","30–34","35–39",
+                    "40–44","45–49","50–54","55–59","60–64","65–69","70–74",
+                    "75–79","80–84","85–89","90+"]
+            _rm  = [reg_df[f"pop2020_m_{b}"].apply(lambda x: float(x) if x not in ('','-',None) else 0).sum() for b in _ab]
+            _rf  = [reg_df[f"pop2020_f_{b}"].apply(lambda x: float(x) if x not in ('','-',None) else 0).sum() for b in _ab]
+            _rmx = max(max(_rm), max(_rf), 1)
+            fig_p = go.Figure()
+            fig_p.add_trace(go.Bar(
+                name="Male", y=_lbl, x=[-v for v in _rm],
+                orientation="h", marker_color="#534AB7", opacity=0.85,
+                hovertemplate="%{customdata:,}<extra>Male</extra>",
+                customdata=[int(v) for v in _rm],
+            ))
+            fig_p.add_trace(go.Bar(
+                name="Female", y=_lbl, x=_rf,
+                orientation="h", marker_color="#D4537E", opacity=0.85,
+                hovertemplate="%{x:,}<extra>Female</extra>",
             ))
             fig_p.update_layout(
-                height=260, margin=dict(t=10, b=30),
-                yaxis_title="Population",
+                barmode="overlay", height=380,
+                margin=dict(t=10, b=10, l=0, r=0),
+                xaxis=dict(
+                    tickvals=[-_rmx, -_rmx//2, 0, _rmx//2, _rmx],
+                    ticktext=[f"{_rmx:,.0f}", f"{_rmx//2:,.0f}", "0",
+                              f"{_rmx//2:,.0f}", f"{_rmx:,.0f}"],
+                    title="Population",
+                ),
+                legend=dict(orientation="h", y=1.05),
                 plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-                showlegend=False,
             )
             st.plotly_chart(fig_p, use_container_width=True)
 
@@ -882,57 +951,117 @@ elif page == "⚖️ Compare":
         )
         st.plotly_chart(radar_lc, use_container_width=True)
 
-    # ── Row 2: Demographics side-by-side + radar ───────────────────────────────
+    # ── Row 2: Population pyramid + radar ─────────────────────────────────────
     st.divider()
-    st.subheader("Demographics")
+    st.subheader("Age & sex profile")
+
+    # 5-year band definitions
+    age_bands  = ["0_4","5_9","10_14","15_19","20_24","25_29","30_34","35_39",
+                  "40_44","45_49","50_54","55_59","60_64","65_69","70_74",
+                  "75_79","80_84","85_89","90andOver"]
+    age_labels_pyr = ["0–4","5–9","10–14","15–19","20–24","25–29","30–34","35–39",
+                      "40–44","45–49","50–54","55–59","60–64","65–69","70–74",
+                      "75–79","80–84","85–89","90+"]
+
+    def pyr_vals(row, sex):
+        """Return counts for each 5-year band for given sex (Males/Females)."""
+        vals = []
+        for b in age_bands:
+            col = f"pop2020_{'m' if sex == 'male' else 'f'}_{b}"
+            vals.append(safe(row.get(col, 0)))
+        return vals
+
     cl2, cr2 = st.columns(2)
 
-    age_keys   = ["pct_age_0_14", "pct_age_15_64", "pct_age_65plus"]
-    age_labels = ["Under 15", "15–64", "65+"]
-    age_colors = ["#1D9E75", "#534AB7", "#BA7517"]
-
     with cl2:
-        fig_age = go.Figure()
-        fig_age.add_trace(go.Bar(
-            name=pa_a, x=age_labels,
-            y=[safe(ra[k]) for k in age_keys],
-            marker_color="#639922", opacity=0.85,
+        # Butterfly pyramid — males left (negative), females right (positive)
+        fig_pyr = go.Figure()
+        fig_pyr.add_trace(go.Bar(
+            name="Male", y=age_labels_pyr,
+            x=[-v for v in pyr_vals(ra, "male")],
+            orientation="h", marker_color="#534AB7", opacity=0.85,
+            hovertemplate="%{customdata:,}<extra>Male</extra>",
+            customdata=pyr_vals(ra, "male"),
         ))
-        fig_age.add_trace(go.Bar(
-            name=pa_b, x=age_labels,
-            y=[safe(rb[k]) for k in age_keys],
-            marker_color="#378ADD", opacity=0.85,
+        fig_pyr.add_trace(go.Bar(
+            name="Female", y=age_labels_pyr,
+            x=pyr_vals(ra, "female"),
+            orientation="h", marker_color="#D4537E", opacity=0.85,
+            hovertemplate="%{x:,}<extra>Female</extra>",
         ))
-        fig_age.update_layout(
-            barmode="group", height=300,
-            margin=dict(t=10, b=10, l=0, r=0),
-            yaxis_title="% of population",
-            legend=dict(orientation="h", y=1.08),
+        max_val = max(max(pyr_vals(ra, "male")), max(pyr_vals(ra, "female")), 1)
+        fig_pyr.update_layout(
+            title=dict(text=pa_a, font=dict(size=13)),
+            barmode="overlay",
+            height=420,
+            margin=dict(t=30, b=10, l=10, r=10),
+            xaxis=dict(
+                tickvals=[-max_val, -max_val//2, 0, max_val//2, max_val],
+                ticktext=[f"{max_val:,}", f"{max_val//2:,}", "0",
+                          f"{max_val//2:,}", f"{max_val:,}"],
+                title="Population",
+            ),
+            legend=dict(orientation="h", y=1.05),
             plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
         )
-        st.plotly_chart(fig_age, use_container_width=True)
+        st.plotly_chart(fig_pyr, use_container_width=True)
 
     with cr2:
-        radar_age = go.Figure()
-        radar_age.add_trace(go.Scatterpolar(
-            r=[safe(ra[k]) for k in age_keys] + [safe(ra[age_keys[0]])],
-            theta=age_labels + [age_labels[0]],
-            fill="toself", name=pa_a,
-            line_color="#639922", fillcolor="rgba(99,153,34,0.2)",
+        fig_pyr2 = go.Figure()
+        fig_pyr2.add_trace(go.Bar(
+            name="Male", y=age_labels_pyr,
+            x=[-v for v in pyr_vals(rb, "male")],
+            orientation="h", marker_color="#534AB7", opacity=0.85,
+            hovertemplate="%{customdata:,}<extra>Male</extra>",
+            customdata=pyr_vals(rb, "male"),
         ))
-        radar_age.add_trace(go.Scatterpolar(
-            r=[safe(rb[k]) for k in age_keys] + [safe(rb[age_keys[0]])],
-            theta=age_labels + [age_labels[0]],
-            fill="toself", name=pa_b,
-            line_color="#378ADD", fillcolor="rgba(55,138,221,0.2)",
+        fig_pyr2.add_trace(go.Bar(
+            name="Female", y=age_labels_pyr,
+            x=pyr_vals(rb, "female"),
+            orientation="h", marker_color="#D4537E", opacity=0.85,
+            hovertemplate="%{x:,}<extra>Female</extra>",
         ))
-        radar_age.update_layout(
-            polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
-            height=300, margin=dict(t=30, b=10, l=30, r=30),
-            legend=dict(orientation="h", y=1.12),
-            paper_bgcolor="rgba(0,0,0,0)",
+        max_val2 = max(max(pyr_vals(rb, "male")), max(pyr_vals(rb, "female")), 1)
+        fig_pyr2.update_layout(
+            title=dict(text=pa_b, font=dict(size=13)),
+            barmode="overlay",
+            height=420,
+            margin=dict(t=30, b=10, l=10, r=10),
+            xaxis=dict(
+                tickvals=[-max_val2, -max_val2//2, 0, max_val2//2, max_val2],
+                ticktext=[f"{max_val2:,}", f"{max_val2//2:,}", "0",
+                          f"{max_val2//2:,}", f"{max_val2:,}"],
+                title="Population",
+            ),
+            legend=dict(orientation="h", y=1.05),
+            plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
         )
-        st.plotly_chart(radar_age, use_container_width=True)
+        st.plotly_chart(fig_pyr2, use_container_width=True)
+
+    # Radar using broad bands for shape comparison
+    st.subheader("Age structure comparison (broad bands)")
+    age_keys_broad   = ["pct_age_0_14", "pct_age_15_64", "pct_age_65plus"]
+    age_labels_broad = ["Under 15", "15–64", "65+"]
+    radar_age = go.Figure()
+    radar_age.add_trace(go.Scatterpolar(
+        r=[safe(ra[k]) for k in age_keys_broad] + [safe(ra[age_keys_broad[0]])],
+        theta=age_labels_broad + [age_labels_broad[0]],
+        fill="toself", name=pa_a,
+        line_color="#639922", fillcolor="rgba(99,153,34,0.2)",
+    ))
+    radar_age.add_trace(go.Scatterpolar(
+        r=[safe(rb[k]) for k in age_keys_broad] + [safe(rb[age_keys_broad[0]])],
+        theta=age_labels_broad + [age_labels_broad[0]],
+        fill="toself", name=pa_b,
+        line_color="#378ADD", fillcolor="rgba(55,138,221,0.2)",
+    ))
+    radar_age.update_layout(
+        polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
+        height=320, margin=dict(t=30, b=10, l=60, r=60),
+        legend=dict(orientation="h", y=1.12),
+        paper_bgcolor="rgba(0,0,0,0)",
+    )
+    st.plotly_chart(radar_age, use_container_width=True)
 
     # ── Row 3: Income (only if both have data) ─────────────────────────────────
     st.divider()
