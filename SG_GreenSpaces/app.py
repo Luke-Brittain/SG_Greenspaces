@@ -128,7 +128,7 @@ def load_raster_preview():
     """Convert the classified GeoTIFF to an RGBA PNG array for folium overlay."""
     for path in [
     BASE_DIR / "classified_nonodata.tif",
-    BASE_DIR / "classified_3414.tif",
+    BASE_DIR / "classified_nodata.tif",
     BASE_DIR / "classified.tif",
     BASE_DIR / "land_cover.tif",
     ]:
