@@ -211,6 +211,7 @@ st.sidebar.divider()
 all_regions = sorted(df["region"].dropna().unique())
 sel_regions = st.sidebar.multiselect("Filter by region", all_regions, default=all_regions)
 show_residential_only = st.sidebar.checkbox("Residential areas only (pop > 1,000)", value=False)
+st.sidebar.caption("Filters apply to all pages except 🗺️ Map and 📖 Introduction.")
 
 dff = df[df["region"].isin(sel_regions)].copy()
 if show_residential_only:
@@ -235,6 +236,25 @@ if page == "📖 Introduction":
     It combines satellite-derived land cover classification with census demographics and household income data to enable spatial comparison across Singapore's 55 planning areas.
     The dashboard is intended for urban planners, policy researchers, and anyone interested in the relationship between green space and liveability.
     """)
+
+    # ── Provisional finding ──────────────────────────────────────────────────
+    st.divider()
+    st.markdown(
+        "<div style='background:linear-gradient(135deg,rgba(99,153,34,0.12),rgba(29,158,117,0.12));"
+        "border-left:4px solid #639922;border-radius:8px;padding:16px 18px;margin:4px 0'>"
+        "<div style='font-size:13px;font-weight:600;color:#639922;margin-bottom:6px'>"
+        "📊 What the data shows</div>"
+        "<div style='font-size:13px;line-height:1.7'>"
+        "Preliminary analysis of the 2020 data finds that green space is most concentrated in "
+        "Singapore's <strong>North and West regions</strong>, driven by large nature reserves and water catchments. "
+        "Among residential areas, <strong>green space coverage correlates positively with income</strong> "
+        "(r ≈ +0.50 for LGS vs high earners) — wealthier planning areas tend to have meaningfully more "
+        "habitable green space. At the same time, <strong>older populations (aged 60+) tend to live in "
+        "greener areas</strong>, suggesting established residential neighbourhoods retain more tree cover "
+        "than newer high-density developments."
+        "</div></div>",
+        unsafe_allow_html=True,
+    )
 
     # ── Data sources ──────────────────────────────────────────────────────────
     st.divider()
@@ -366,8 +386,9 @@ if page == "📖 Introduction":
     | 💰 **Income** | Examine whether wealthier areas have more or better-quality green space |
     | ⚖️ **Compare** | Select any two planning areas or regions for a side-by-side comparison |
     | 🏆 **Green Metrics** | See all 55 areas ranked by GUB and LGS — the dashboard's central analytical output |
+    | 🔬 **Model Assessment** | Understand the accuracy and limitations of the ML classifier behind all green space data |
 
-    The **sidebar filters** (region and residential areas only) apply to all pages except the Map.
+    The **sidebar filters** (region and residential areas only) apply to all pages except Map and Introduction.
     """)
 
     # ── Important caveats ─────────────────────────────────────────────────────
@@ -668,6 +689,8 @@ elif page == "📊 Land Cover":
             )
 
     st.divider()
+    st.markdown("#### 📊 Planning area detail")
+    st.caption("The primary view — sort and filter all 55 planning areas by any land cover class or green metric.")
 
     # ── 3. Sort + region filter + reference line ───────────────────────────────
     ctrl1, ctrl2 = st.columns([2, 3])
@@ -751,10 +774,21 @@ elif page == "📊 Land Cover":
     )
     st.plotly_chart(fig_gub, use_container_width=True)
 
+    st.markdown(
+        "<div style='background:rgba(239,159,39,0.1);border-left:3px solid #EF9F27;"
+        "border-radius:6px;padding:10px 14px;margin:4px 0;font-size:12px;line-height:1.6'>"
+        "⚠️ <strong>Model note:</strong> The XGBoost classifier has a Parkland recall of 0.75 — "
+        "2 of 8 Parkland test samples were misclassified as Green residential. "
+        "Parkland % may be slightly underestimated; GUB and LGS aggregate both green classes "
+        "and are less sensitive to this. See 🔬 <strong>Model Assessment</strong> for full details."
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
     st.divider()
 
     # ── 4. Region-aggregated stacked bar (replaces treemap) ────────────────────
-    st.subheader("Land cover by region")
+    st.markdown("#### 🌏 Regional summary")
     st.caption("Population-weighted average % per region — shows structural differences "
                "without being skewed by the physical size of individual planning areas.")
 
@@ -779,7 +813,7 @@ elif page == "📊 Land Cover":
             hovertemplate=f"<b>%{{x}}</b><br>{label}: %{{y:.1f}}%<extra></extra>",
         ))
     fig_reg.update_layout(
-        barmode="stack", height=340,
+        barmode="stack", height=300,
         margin=dict(l=10, r=10, t=10, b=40),
         yaxis=dict(title="% cover (pop-weighted avg)", range=[0, 100]),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
@@ -1083,7 +1117,7 @@ elif page == "👥 Demographics":
         )
         fig_ag.update_traces(textposition="top center", textfont_size=10)
         fig_ag.update_layout(
-            height=360, margin=dict(t=10, b=30), showlegend=False,
+            height=400, margin=dict(t=10, b=30), showlegend=False,
             plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
         )
         st.plotly_chart(fig_ag, use_container_width=True)
@@ -1206,7 +1240,7 @@ elif page == "💰 Income":
                 xanchor="right",
             )
             fig_sc.update_layout(
-                height=360, margin=dict(t=40, b=30),
+                height=400, margin=dict(t=40, b=30),
                 plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
             )
             st.plotly_chart(fig_sc, use_container_width=True)
@@ -1435,6 +1469,15 @@ elif page == "⚖️ Compare":
             </div>
             """, unsafe_allow_html=True)
 
+    st.markdown(
+        "<div style='background:rgba(239,159,39,0.08);border-left:3px solid #EF9F27;"
+        "border-radius:6px;padding:8px 14px;margin:4px 0;font-size:11px;color:#888'>"
+        "⚠️ Parkland % may be slightly underestimated due to classifier limitations (recall 0.75). "
+        "GUB and LGS are less affected. See 🔬 Model Assessment."
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
     st.divider()
 
     # ── Row 1: Land cover side-by-side + radar ─────────────────────────────────
@@ -1628,7 +1671,7 @@ elif page == "⚖️ Compare":
                 ticksuffix="%",
                 tickfont=dict(size=10),
             )),
-            height=380,
+            height=400,
             margin=dict(t=50, b=20, l=60, r=60),
             legend=dict(orientation="h", y=1.15, x=0.5, xanchor="center"),
             paper_bgcolor="rgba(0,0,0,0)",
@@ -1698,7 +1741,7 @@ elif page == "⚖️ Compare":
                     hovertemplate="%{x}: %{y:.1f}%<extra>" + pa_b + "</extra>",
                 ))
             fig_inc.update_layout(
-                barmode="group", height=320,
+                barmode="group", height=300,
                 margin=dict(t=10, b=40, l=0, r=0),
                 yaxis_title="% of workers",
                 xaxis_tickangle=-30,
@@ -1728,7 +1771,7 @@ elif page == "⚖️ Compare":
                 fig_div.add_vline(x=0, line_width=1,
                                   line_color="rgba(128,128,128,0.4)")
                 fig_div.update_layout(
-                    height=320,
+                    height=300,
                     margin=dict(t=30, b=40, l=0, r=10),
                     xaxis=dict(
                         title="% point difference (A − B)",
@@ -1911,7 +1954,7 @@ elif page == "🏆 Green Metrics":
         size_max=40,
     )
     fig_sc.update_layout(
-        height=440, margin=dict(t=20, b=40),
+        height=400, margin=dict(t=20, b=40),
         xaxis=dict(range=[-1.05, 1.05],
                    tickvals=[-1,-0.5,0,0.5,1], zeroline=True,
                    zerolinecolor="rgba(128,128,128,0.3)"),
@@ -1983,7 +2026,7 @@ elif page == "🏆 Green Metrics":
             font=dict(size=12, color="#888"), xanchor="right",
         )
     fig_age.update_layout(
-        height=420, margin=dict(t=20, b=40),
+        height=400, margin=dict(t=20, b=40),
         xaxis=dict(range=gm_xrng, **gm_xtk),
         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
     )
@@ -2054,7 +2097,7 @@ elif page == "🔬 Model Assessment":
         fig_cls.add_hline(y=1.0, line_width=1, line_dash="dot",
                           line_color="rgba(128,128,128,0.3)")
         fig_cls.update_layout(
-            barmode="group", height=340,
+            barmode="group", height=300,
             margin=dict(t=10, b=30, l=0, r=0),
             yaxis=dict(title="Score", range=[0, 1.1],
                        tickvals=[0, 0.25, 0.5, 0.75, 1.0]),
@@ -2106,7 +2149,7 @@ elif page == "🔬 Model Assessment":
                           "Count: %{text} (%{z:.0f}%)<extra></extra>",
         ))
         fig_cm.update_layout(
-            height=340,
+            height=300,
             margin=dict(t=10, b=60, l=10, r=10),
             xaxis=dict(title="Predicted", tickfont=dict(size=11), side="bottom"),
             yaxis=dict(title="Actual",    tickfont=dict(size=11), autorange="reversed"),
