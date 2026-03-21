@@ -522,9 +522,9 @@ elif page == "🗺️ Map":
             },
             tooltip=folium.GeoJsonTooltip(
                 fields=["name", "region", "pop2020_total",
-                        "pct_urban", "pct_green_total", "pct_parkland", "pct_water"],
+                        "pct_urban", "pct_green_res", "pct_parkland", "pct_water"],
                 aliases=["Area", "Region", "Population",
-                         "% Urban", "% Green", "% Parkland", "% Water"],
+                         "% Urban", "% Green res.", "% Parkland", "% Water"],
                 localize=True, sticky=True,
                 style=(
                     "background-color:rgba(15,15,15,0.88);color:#fff;"
@@ -597,7 +597,7 @@ elif page == "🗺️ Map":
           <div class="sp-region">Hover a planning area to update</div>
           <div class="sp-section">Land cover (avg)</div>
           <div class="sp-row"><span class="sp-label">Green res.</span><span class="sp-val">20.6%</span></div>
-          <div class="sp-row"><span class="sp-label">Parkland</span><span class="sp-val">37.1%</span></div>
+          <div class="sp-row"><span class="sp-label">Parkland</span><span class="sp-val">37.2%</span></div>
           <div class="sp-row"><span class="sp-label">Urban</span><span class="sp-val">32.5%</span></div>
           <div class="sp-row"><span class="sp-label">Water</span><span class="sp-val">9.7%</span></div>
           <hr class="sp-divider">
@@ -1034,7 +1034,7 @@ elif page == "👥 Demographics":
         sc_metrics = [
             ("Population",    f"{pop:,}" if pop else "n/a",  "#534AB7"),
             ("% Urban",       f"{safe_m(row,'pct_urban'):.1f}%",       "#888780"),
-            ("% Green",       f"{safe_m(row,'pct_green_total'):.1f}%", "#639922"),
+            ("% Green res.",  f"{safe_m(row,'pct_green_res'):.1f}%",   "#639922"),
             ("% Parkland",    f"{safe_m(row,'pct_parkland'):.1f}%",    "#1D9E75"),
             ("% Water",       f"{safe_m(row,'pct_water'):.1f}%",       "#378ADD"),
             ("Aged 60+",      f"{p60p:.1f}%",                          "#BA7517"),
@@ -1460,7 +1460,7 @@ elif page == "⚖️ Compare":
     metrics = [
         ("Population",      "pop2020_total",        "pop"),
         ("% Urban",         "pct_urban",             "pct"),
-        ("% Green (total)", "pct_green_total",       "pct"),
+        ("% Green res.",    "pct_green_res",         "pct"),
         ("% Parkland",      "pct_parkland",          "pct"),
         ("% Water",         "pct_water",             "pct"),
         ("Aged 60+",        "pct_age10_60plus_sum",  "pct"),
