@@ -113,6 +113,24 @@ def load_csv():
     for c in num_cols:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce")
+    # ── Recompute pct columns from raw pixel counts ──────────────────────────
+    # This makes the app immune to any QGIS NoData export bugs in the CSV.
+    # pct is always pixel_class / (sum of all 4 classes) * 100.
+    for col_px, col_pct in [
+        ("px_green_res", "pct_green_res"),
+        ("px_parkland",  "pct_parkland"),
+        ("px_urban",     "pct_urban"),
+        ("px_water",     "pct_water"),
+    ]:
+        if col_px in df.columns:
+            px_total = (
+                df["px_green_res"].fillna(0) +
+                df["px_parkland"].fillna(0) +
+                df["px_urban"].fillna(0) +
+                df["px_water"].fillna(0)
+            ).replace(0, np.nan)
+            df[col_pct] = (df[col_px].fillna(0) / px_total * 100).round(3)
+
     df["pct_green_total"] = df["pct_green_res"] + df["pct_parkland"]
     df["pct_not_green"]   = df["pct_urban"] + df["pct_water"]
 
