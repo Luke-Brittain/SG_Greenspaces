@@ -2052,16 +2052,15 @@ elif page == "🏆 Green Metrics":
     gm_xtk  = dict(tickvals=[-1,-0.5,0,0.5,1], zeroline=True,
                    zerolinecolor="rgba(128,128,128,0.3)") if age_metric == "GUB" else {}
 
+    gm_fmt = ":.3f" if age_metric == "GUB" else ":.1f"
     fig_age = px.scatter(
         gdf_age,
         x=gm_x, y="pct_age_60plus",
         size="pop2020_total", color="region",
         color_discrete_map=REGION_COLORS,
         hover_name="name",
-        hover_data={gm_x: ":.3f" if age_metric == "GUB" else ":.1f",
-                    "pct_age_60plus": ":.1f", "pop2020_total": ":,"},
+        hover_data={"pct_age_60plus": True, "pop2020_total": True},
         labels={gm_x: gm_xlbl, "pct_age_60plus": "% Aged 60+", "region": "Region"},
-        trendline="ols",
         size_max=40,
     )
     # Override per-region trendlines with a single overall line
@@ -2075,8 +2074,7 @@ elif page == "🏆 Green Metrics":
             size="pop2020_total", color="region",
             color_discrete_map=REGION_COLORS,
             hover_name="name",
-            hover_data={gm_x: ":.3f" if age_metric == "GUB" else ":.1f",
-                        "pct_age_60plus": ":.1f", "pop2020_total": ":,"},
+            hover_data={"pct_age_60plus": True, "pop2020_total": True},
             labels={gm_x: gm_xlbl, "pct_age_60plus": "% Aged 60+", "region": "Region"},
             size_max=40,
         )
