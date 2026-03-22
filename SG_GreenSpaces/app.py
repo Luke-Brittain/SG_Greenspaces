@@ -2052,32 +2052,35 @@ elif page == "🏆 Green Metrics":
     gm_xtk  = dict(tickvals=[-1,-0.5,0,0.5,1], zeroline=True,
                    zerolinecolor="rgba(128,128,128,0.3)") if age_metric == "GUB" else {}
 
-    gm_fmt = ":.3f" if age_metric == "GUB" else ":.1f"
-    fig_age = px.scatter(
-        gdf_age,
-        x=gm_x, y="pct_age_60plus",
-        size="pop2020_total", color="region",
-        color_discrete_map=REGION_COLORS,
-        hover_name="name",
-        hover_data={"pct_age_60plus": True, "pop2020_total": True},
-        labels={gm_x: gm_xlbl, "pct_age_60plus": "% Aged 60+", "region": "Region"},
-        size_max=40,
-    )
-    # Override per-region trendlines with a single overall line
+    # Build age scatter using go.Scatter directly — avoids px size/hover validation issues
+    gdf_age["pop_size"] = gdf_age["pop2020_total"].fillna(0).clip(lower=1)
+    max_pop = gdf_age["pop_size"].max()
+    gdf_age["marker_size"] = (np.sqrt(gdf_age["pop_size"] / max_pop) * 35 + 6).clip(upper=40)
+
+    fig_age = go.Figure()
+    for region, grp in gdf_age.groupby("region"):
+        clr = REGION_COLORS.get(region, "#888")
+        fig_age.add_trace(go.Scatter(
+            x=grp[gm_x],
+            y=grp["pct_age_60plus"],
+            mode="markers",
+            name=region,
+            marker=dict(color=clr, size=grp["marker_size"].tolist(), opacity=0.8,
+                        line=dict(width=0.5, color="rgba(255,255,255,0.4)")),
+            hovertemplate=(
+                "<b>%{customdata[0]}</b><br>"
+                + gm_xlbl + ": %{x:.2f}<br>"
+                "% Aged 60+: %{y:.1f}%<br>"
+                "Population: %{customdata[1]:,}<extra></extra>"
+            ),
+            customdata=grp[["name","pop_size"]].values,
+        ))
+
+    # Single OLS trendline
     r_all = gdf_age[[gm_x, "pct_age_60plus"]].dropna()
     if len(r_all) > 2:
         m, b = np.polyfit(r_all[gm_x], r_all["pct_age_60plus"], 1)
         x_ln = np.array([r_all[gm_x].min(), r_all[gm_x].max()])
-        fig_age = px.scatter(
-            gdf_age,
-            x=gm_x, y="pct_age_60plus",
-            size="pop2020_total", color="region",
-            color_discrete_map=REGION_COLORS,
-            hover_name="name",
-            hover_data={"pct_age_60plus": True, "pop2020_total": True},
-            labels={gm_x: gm_xlbl, "pct_age_60plus": "% Aged 60+", "region": "Region"},
-            size_max=40,
-        )
         fig_age.add_trace(go.Scatter(
             x=x_ln, y=m * x_ln + b, mode="lines",
             line=dict(color="rgba(100,100,100,0.5)", width=2, dash="dot"),
@@ -2089,9 +2092,12 @@ elif page == "🏆 Green Metrics":
             text=f"r = {r_val:+.2f}", showarrow=False,
             font=dict(size=12, color="#888"), xanchor="right",
         )
+
     fig_age.update_layout(
         height=400, margin=dict(t=20, b=40),
-        xaxis=dict(range=gm_xrng, **gm_xtk),
+        xaxis=dict(title=gm_xlbl, range=gm_xrng, **gm_xtk),
+        yaxis=dict(title="% Aged 60+"),
+        legend=dict(title="Region"),
         plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
     )
     st.plotly_chart(fig_age, use_container_width=True)
